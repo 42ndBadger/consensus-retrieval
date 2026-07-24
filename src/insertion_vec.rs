@@ -9,7 +9,7 @@ pub struct InsertionVec {
 }
 
 impl InsertionVec {
-    pub fn new<K: Hash, V: Clone>(kv: HashMap<HashCode, V>, group_size: u32, hasher: &RetrievalHasher<K, V>) -> Self {
+    pub fn new<K: Hash, V: Clone>(kv: &HashMap<HashCode, V>, probabilities: &HashMap<&V, f32>, group_size: u32, hasher: &RetrievalHasher<K, V>) -> Self {
         todo!("construct insertion vector by calculating q_i")
     }
 

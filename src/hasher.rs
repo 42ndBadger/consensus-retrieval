@@ -8,7 +8,7 @@ pub struct RetrievalHasher<K: Hash, V: Clone> {
 }
 
 impl<K: Hash, V: Clone> RetrievalHasher<K, V> {
-    pub fn new_random(probabilities: HashMap<K, f32>) -> Self {
+    pub fn new_random(probabilities: &HashMap<&V, f32>) -> Self {
         todo!()
     }
     
@@ -29,14 +29,10 @@ impl<K: Hash, V: Clone> RetrievalHasher<K, V> {
         todo!()
     }
 
-    /// Checks wheter no two keys have the same hash code.
-    pub fn check_hash_codes_unique<'a>(
-        &self,
-        hash_codes: impl IntoIterator<Item = &'a K> + 'a,
-    ) -> bool
-    where
-        K: 'a,
-    {
+    
+    /// Also checks wheter no two keys have the same hash code.
+    /// Returns `None` if that's the case.
+    pub fn conert_to_hash_codes(&self, kv: &HashMap<K, V>) -> Option<HashMap<HashCode, V>> {
         todo!()
     }
 }

@@ -8,7 +8,7 @@ pub struct ConsensusVector {
 }
 
 impl ConsensusVector {
-    pub fn new<K: Hash, V: Clone>(kv: HashMap<HashCode, V>, insertion_vec: &InsertionVec, hasher: &RetrievalHasher<K,V>) -> Self {
+    pub fn new<K: Hash, V: Clone>(kv: &HashMap<HashCode, V>, insertion_vec: &InsertionVec, hasher: &RetrievalHasher<K,V>) -> Self {
         todo!()
     }
 
