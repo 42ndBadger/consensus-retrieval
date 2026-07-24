@@ -31,7 +31,7 @@ impl InsertionVec {
             kv_per_group[group].push((key, value));
         }
 
-        let max_l = - ε.log2() + 3. * β as f64;
+        let max_l = -ε.log2() + 3. * β as f64;
 
         // l_right = -log2(q_right); boundary q_right = 1 (vacuous success) => l = 0
         let mut l_right = 0f64;
@@ -59,8 +59,8 @@ impl InsertionVec {
                     l = l + task_log_p[task] - (2. - q_next * p).log2();
 
                     if l > max_l {
-                       good_event = false;
-                       break;
+                        good_event = false;
+                        break;
                     }
                 }
 
@@ -77,7 +77,7 @@ impl InsertionVec {
         }
 
         // Unary code, group by group in order: ell_i ones followed by a 0 divider.
-        let mut bits = BitVec::with_capacity(kv.len() + num_groups);
+        let mut bits = BitVec::new(0);
         for &ell in &num_insertions_per_group {
             for _ in 0..ell {
                 bits.push(true);
