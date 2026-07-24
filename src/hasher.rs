@@ -8,16 +8,16 @@ pub struct RetrievalHasher<K: Hash, V: Clone> {
 }
 
 impl<K: Hash, V: Clone> RetrievalHasher<K, V> {
-    pub fn new_random(probabilities: &HashMap<&V, f32>) -> Self {
+    pub fn new_random(probabilities: &HashMap<&V, f64>) -> Self {
         todo!()
     }
     
-    pub fn hash_to_group(&self, key: HashCode, num_partitions: u64) -> Seed {
+    pub fn hash_to_group(&self, key: HashCode, num_groups: usize) -> usize {
         todo!()
     }
 
     /// Must return "independent" hash values for different `num_tasks`.
-    pub fn hash_to_task(&self, key: HashCode, num_tasks: u64) -> Seed {
+    pub fn hash_to_task(&self, key: HashCode, num_tasks: usize) -> usize {
         todo!()
     }
 

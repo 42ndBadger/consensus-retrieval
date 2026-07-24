@@ -15,10 +15,10 @@ pub struct ConsensusRetrieval<K: Hash, V: Clone> {
     hasher: hasher::RetrievalHasher<K, V>,
 }
 
-type Probabilities<'a, V> = HashMap<&'a V, f32>;
+type Probabilities<'a, V> = HashMap<&'a V, f64>;
 
-impl<K: Hash, V: Clone> ConsensusRetrieval<K, V> {
-    pub fn new(kv: HashMap<K, V>, group_size: u32) -> Self {
+impl<K: Hash, V: Clone+Hash+Eq> ConsensusRetrieval<K, V> {
+    pub fn new(kv: HashMap<K, V>, group_size: usize) -> Self {
         let frequencies = calculate_frequencies(&kv);
         let hasher = RetrievalHasher::new_random(&frequencies);
         let kv: HashMap<HashCode, V> = hasher.conert_to_hash_codes(&kv).expect("not duplicates");
