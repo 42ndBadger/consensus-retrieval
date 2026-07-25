@@ -1,38 +1,71 @@
-use std::{collections::HashMap, hash::Hash, marker::PhantomData};
+use crate::alias::{AliasTable, AliasTableError};
+use std::{
+    collections::HashMap,
+    hash::{BuildHasher, Hash, Hasher},
+    marker::PhantomData,
+};
 
 pub type Seed = u64;
 pub type HashCode = u64;
 
 pub struct RetrievalHasher<K: Hash, V: Clone> {
     _p: PhantomData<(K, V)>,
+    alias_table: AliasTable<V>,
+    build_hasher: ahash::RandomState,
 }
 
-impl<K: Hash, V: Clone> RetrievalHasher<K, V> {
-    pub fn new_random(probabilities: &HashMap<&V, f64>) -> Self {
-        todo!()
+impl<K: Hash, V: Clone + Hash + Eq> RetrievalHasher<K, V> {
+    pub fn new_random(probabilities: &HashMap<&V, f64>) -> Result<Self, AliasTableError<V>> {
+        let alias_table = AliasTable::from(probabilities)?;
+        Ok(Self {
+            _p: PhantomData,
+            alias_table,
+            build_hasher: ahash::RandomState::new(),
+        })
     }
-    
+
+    /// Hashes `value` within its own `tag` domain, so that the different
+    /// `hash_to_*`/`hash` methods never collide with each other just because
+    /// they were called with the same underlying `key`.
+    fn hash64(&self, tag: u8, value: impl Hash) -> u64 {
+        let mut hasher = self.build_hasher.build_hasher();
+        tag.hash(&mut hasher);
+        value.hash(&mut hasher);
+        hasher.finish()
+    }
+
     pub fn hash_to_group(&self, key: HashCode, num_groups: usize) -> usize {
-        todo!()
+        (self.hash64(0, key) % num_groups as u64) as usize
     }
 
     /// Must return "independent" hash values for different `num_tasks`.
     pub fn hash_to_task(&self, key: HashCode, num_tasks: usize) -> usize {
-        todo!()
+        // num_tasks is folded into the hashed bytes (not just the modulus),
+        // so results for different num_tasks don't correlate.
+        (self.hash64(1, (key, num_tasks)) % num_tasks as u64) as usize
     }
 
     pub fn hash(&self, key: HashCode, seed: Seed) -> V {
-        todo!()
+        let h = self.hash64(2, (key, seed));
+        // Top 53 bits of the hash -> a uniform f64 in [0, 1).
+        let u = (h >> 11) as f64 / (1u64 << 53) as f64;
+        self.alias_table.sample(u).clone()
     }
 
     pub fn hash_to_hash_code(&self, key: &K) -> HashCode {
-        todo!()
+        self.hash64(3, key)
     }
 
-    
     /// Also checks wheter no two keys have the same hash code.
     /// Returns `None` if that's the case.
     pub fn conert_to_hash_codes(&self, kv: &HashMap<K, V>) -> Option<HashMap<HashCode, V>> {
-        todo!()
+        let mut result = HashMap::with_capacity(kv.len());
+        for (k, v) in kv {
+            let code = self.hash_to_hash_code(k);
+            if result.insert(code, v.clone()).is_some() {
+                return None;
+            }
+        }
+        Some(result)
     }
 }

@@ -1,10 +1,11 @@
-use std::{collections::HashMap, hash::Hash, marker::PhantomData};
+use std::{collections::HashMap, hash::Hash, fmt::Debug, marker::PhantomData};
 
 use crate::{
     hasher::{HashCode, RetrievalHasher},
     insertion_vec::InsertionVec,
 };
 
+mod alias;
 mod consensus;
 mod hasher;
 mod insertion_vec;
@@ -17,10 +18,10 @@ pub struct ConsensusRetrieval<K: Hash, V: Clone> {
 
 type Probabilities<'a, V> = HashMap<&'a V, f64>;
 
-impl<K: Hash, V: Clone+Hash+Eq> ConsensusRetrieval<K, V> {
+impl<K: Hash, V: Clone + Hash + Eq + Debug> ConsensusRetrieval<K, V> {
     pub fn new(kv: HashMap<K, V>, group_size: usize) -> Self {
         let frequencies = calculate_frequencies(&kv);
-        let hasher = RetrievalHasher::new_random(&frequencies);
+        let hasher = RetrievalHasher::new_random(&frequencies).unwrap();
         let kv: HashMap<HashCode, V> = hasher.conert_to_hash_codes(&kv).expect("not duplicates");
 
         let insertion = InsertionVec::new(&kv, &frequencies, group_size, &hasher);
