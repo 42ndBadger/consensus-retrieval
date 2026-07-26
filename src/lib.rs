@@ -19,12 +19,12 @@ pub struct ConsensusRetrieval<K: Hash, V: Clone + Hash + Eq> {
 type Probabilities<'a, V> = HashMap<&'a V, f64>;
 
 impl<K: Hash, V: Clone + Hash + Eq + Debug> ConsensusRetrieval<K, V> {
-    pub fn new(kv: HashMap<K, V>, group_size: usize) -> Self {
-        let frequencies = calculate_frequencies(&kv);
+    pub fn new_random(kv: &HashMap<K, V>, b: usize) -> Self {
+        let frequencies = calculate_frequencies(kv);
         let hasher = RetrievalHasher::new_random(&frequencies).unwrap();
-        let kv: HashMap<HashCode, V> = hasher.conert_to_hash_codes(&kv).expect("not duplicates");
+        let kv: HashMap<HashCode, V> = hasher.conert_to_hash_codes(kv).expect("not duplicates");
 
-        let insertion = InsertionVec::new(&kv, &frequencies, group_size, &hasher);
+        let insertion = InsertionVec::new(&kv, &frequencies, b, &hasher);
         let consensus = consensus::ConsensusVector::new(&kv, &insertion, &hasher);
 
         Self {
@@ -64,12 +64,45 @@ fn calculate_frequencies<K: Hash, V: Clone + Hash + Eq>(
 
 #[cfg(test)]
 mod test {
-    use crate::calculate_frequencies;
+    use rand::random_range;
+
+    use crate::{ConsensusRetrieval, calculate_frequencies};
 
     #[test]
     fn test_calc_frequencies() {
         let kv = [(0, 0), (1, 1), (2, 0), (3, 0)].into();
         let probs = calculate_frequencies(&kv);
         assert_eq!(probs, [(&1, 0.25), (&0, 0.75)].into());
+    }
+
+    #[test]
+    fn test_small() {
+        let kv = [(0, 0), (1, 1), (2, 0), (3, 0)].into();
+        let ret = ConsensusRetrieval::new_random(&kv, 1);
+        for (k, v) in kv.iter() {
+            assert!(
+                &ret.query(k) == v,
+                "expected {k} -> {v} but got {}",
+                ret.query(k)
+            )
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn test_rand() {
+        let n = 100;
+        let sigma = 10;
+        let b = 100;
+
+        let kv = (0..n).map(|k| (k, random_range(0..sigma))).collect();
+        let retrieval = ConsensusRetrieval::new_random(&kv, b);
+        for (k, v) in kv.iter() {
+            assert!(
+                &retrieval.query(k) == v,
+                "expected {k} -> {v} but got {}",
+                retrieval.query(k)
+            )
+        }
     }
 }

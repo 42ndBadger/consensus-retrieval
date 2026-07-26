@@ -20,13 +20,20 @@ impl InsertionVec {
         b: usize,
         hasher: &RetrievalHasher<K, V>,
     ) -> Self {
-        let β = f64::ceil((b as f64).sqrt() * (b as f64).log2()) as usize;
-        let ε = 1. / (b as f64);
+        assert!(b > 0, "b must be positive");
+
+        let β = f64::ceil((b as f64).sqrt() * (b as f64).log2()) as usize + 1; // todo how ensure > 0?
+        dbg!(&β);
+        let ε = 1. / (b as f64 + 1.); // todo how to ensure < 1?
+        dbg!(&ε);
         #[allow(non_snake_case)]
         let H: f64 = probabilities.values().map(|p| -p * p.log2()).sum();
+        dbg!(&H);
         let λ = (b as f64 + β as f64 / 2.) * (1. - ε) / H;
+        dbg!(&λ);
 
         let num_groups = ((kv.len() as f64) / λ).ceil() as usize;
+        dbg!(&num_groups);
 
         let mut kv_per_group = vec![vec![]; num_groups];
         for (key, value) in kv {
