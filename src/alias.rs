@@ -7,10 +7,12 @@ pub enum AliasTableError<V> {
     InvalidWeight(V, f64),
     ZeroTotalWeight,
 }
+#[derive(Debug, Clone, PartialEq)]
 struct Entry<V> {
     weight: f64,
     value_and_alias: [V; 2], // value, alias — in array to allow branchless selection
 }
+#[derive(Debug, Clone, PartialEq)]
 pub struct AliasTable<V> {
     table: Vec<Entry<V>>,
     average_weight: f64,
@@ -106,5 +108,86 @@ impl<V> AliasTable<V> {
         let entry = &self.table[index];
 
         &entry.value_and_alias[(f <= entry.weight) as usize]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::alias;
+    use std::fmt::Debug;
+
+    use super::*;
+
+    #[test]
+    fn test_uniform_alias_table() {
+        let uniform_distribution =
+            HashMap::from([(&1, 0.25f64), (&2, 0.25f64), (&3, 0.25f64), (&4, 0.25f64)]);
+        let table = AliasTable::from(&uniform_distribution).unwrap();
+        for i in 0..100 {
+            let u = 1. / 100. * i as f64;
+            let sample = table.sample(u);
+            assert!(uniform_distribution.contains_key(sample));
+        }
+    }
+
+    #[test]
+    fn test_uniform_alias_table_matches() {
+        let uniform_distribution =
+            HashMap::from([(&1, 0.25f64), (&2, 0.25f64), (&3, 0.25f64), (&4, 0.25f64)]);
+        let table = AliasTable::from(&uniform_distribution).unwrap();
+        assert!(alias_table_matches(&table, &uniform_distribution));
+    }
+
+    #[test]
+    fn test_non_uniform_alias_table_matches() {
+        let non_uniform_distribution =
+            HashMap::from([(&1, 0.1f64), (&2, 0.2f64), (&3, 0.3f64), (&4, 0.4f64)]);
+        let table = AliasTable::from(&non_uniform_distribution).unwrap();
+        assert!(alias_table_matches(&table, &non_uniform_distribution));
+    }
+
+    fn probabilites_of_alias_table<V: Clone + Hash + Eq + Debug>(
+        alias_table: &AliasTable<V>,
+    ) -> HashMap<&V, f64> {
+        let mut result = HashMap::new();
+        let prob_of_entry = 1. / alias_table.table.len() as f64;
+        for entry in &alias_table.table {
+            println!(
+                "entry: {entry:?} p: {}",
+                entry.weight / alias_table.average_weight / alias_table.table.len() as f64
+            );
+            let p = entry.weight / alias_table.average_weight * prob_of_entry;
+            result
+                .entry(&entry.value_and_alias[0])
+                .and_modify(|w| *w += p)
+                .or_insert(p);
+            result
+                .entry(&entry.value_and_alias[1])
+                .and_modify(|w| *w += prob_of_entry - p)
+                .or_insert(prob_of_entry - p);
+        }
+        result
+    }
+
+    fn alias_table_matches<V: Clone + Hash + Eq + Debug>(
+        alias_table: &AliasTable<V>,
+        expected: &HashMap<&V, f64>,
+    ) -> bool {
+        let actual = probabilites_of_alias_table(alias_table);
+        println!("table: {alias_table:?}");
+        println!("actual: {actual:?}, expected: {expected:?}");
+        assert!(
+            actual.len() == expected.len(),
+            "number of keys does not match"
+        );
+        for (k, p) in expected {
+            assert!(actual.contains_key(k), "key {k:?} is missing");
+            assert!(
+                (*p - actual[k]).abs() < f64::EPSILON,
+                "probability of {k:?} does not match, expected {p}, got {}",
+                actual[k]
+            );
+        }
+        true
     }
 }
