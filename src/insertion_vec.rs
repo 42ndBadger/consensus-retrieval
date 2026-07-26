@@ -120,6 +120,11 @@ impl InsertionVec {
 
     pub fn group_start(&self, group_idx: usize) -> Option<usize> {
         todo!("also avoid duplicate work with group_size");
-        
+    }
+
+    pub fn total_num_tasks(&self) -> usize {
+        (0..self.num_groups())
+            .map(|g| self.b + self.β * self.group_size(g).expect("valid"))
+            .sum()
     }
 }

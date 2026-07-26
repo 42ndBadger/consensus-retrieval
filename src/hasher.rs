@@ -8,7 +8,7 @@ use std::{
 pub type Seed = u64;
 pub type HashCode = u64;
 
-pub struct RetrievalHasher<K: Hash, V: Clone> {
+pub struct RetrievalHasher<K: Hash, V: Clone + Hash + Eq> {
     _p: PhantomData<(K, V)>,
     alias_table: AliasTable<V>,
     build_hasher: ahash::RandomState,

@@ -10,7 +10,7 @@ mod consensus;
 mod hasher;
 mod insertion_vec;
 
-pub struct ConsensusRetrieval<K: Hash, V: Clone> {
+pub struct ConsensusRetrieval<K: Hash, V: Clone + Hash + Eq> {
     insertion_vec: insertion_vec::InsertionVec,
     consensus_vector: consensus::ConsensusVector,
     hasher: hasher::RetrievalHasher<K, V>,
