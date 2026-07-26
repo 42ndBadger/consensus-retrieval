@@ -1,4 +1,7 @@
-use std::{collections::HashMap, hash::Hash};
+use std::{
+    collections::HashMap,
+    hash::{BuildHasher, Hash},
+};
 use sux::prelude::*;
 
 use crate::{
@@ -18,7 +21,7 @@ impl InsertionVec {
         kv: &HashMap<HashCode, V>,
         probabilities: &Probabilities<V>,
         b: usize,
-        hasher: &RetrievalHasher<K, V>,
+        hasher: &RetrievalHasher<K, V, impl BuildHasher>,
     ) -> Self {
         assert!(b > 0, "b must be positive");
 

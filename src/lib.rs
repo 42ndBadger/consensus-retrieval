@@ -1,4 +1,8 @@
-use std::{collections::HashMap, fmt::Debug, hash::Hash};
+use std::{
+    collections::HashMap,
+    fmt::Debug,
+    hash::{BuildHasher, Hash},
+};
 
 use crate::{
     hasher::{HashCode, RetrievalHasher},
@@ -10,18 +14,24 @@ mod consensus;
 mod hasher;
 mod insertion_vec;
 
-pub struct ConsensusRetrieval<K: Hash, V: Clone + Hash + Eq> {
+pub struct ConsensusRetrieval<K: Hash, V: Clone + Hash + Eq, H: BuildHasher = ahash::RandomState> {
     insertion_vec: insertion_vec::InsertionVec,
     consensus_vector: consensus::ConsensusVector,
-    hasher: hasher::RetrievalHasher<K, V>,
+    hasher: hasher::RetrievalHasher<K, V, H>,
 }
 
 type Probabilities<'a, V> = HashMap<&'a V, f64>;
 
 impl<K: Hash, V: Clone + Hash + Eq + Debug> ConsensusRetrieval<K, V> {
     pub fn new_random(kv: &HashMap<K, V>, b: usize) -> Self {
+        Self::new_with_hasher(kv, b, ahash::RandomState::new())
+    }
+}
+
+impl<K: Hash, V: Clone + Hash + Eq + Debug, H: BuildHasher> ConsensusRetrieval<K, V, H> {
+    pub fn new_with_hasher(kv: &HashMap<K, V>, b: usize, hasher_bulder: H) -> Self {
         let frequencies = calculate_frequencies(kv);
-        let hasher = RetrievalHasher::new_random(&frequencies).unwrap();
+        let hasher = RetrievalHasher::new_with_hasher(&frequencies, hasher_bulder).unwrap();
         let kv: HashMap<HashCode, V> = hasher.conert_to_hash_codes(kv).expect("not duplicates");
 
         let insertion = InsertionVec::new(&kv, &frequencies, b, &hasher);

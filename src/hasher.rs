@@ -8,22 +8,24 @@ use std::{
 pub type Seed = u64;
 pub type HashCode = u64;
 
-pub struct RetrievalHasher<K: Hash, V: Clone + Hash + Eq> {
+pub struct RetrievalHasher<K: Hash, V: Clone + Hash + Eq, H: BuildHasher> {
     _p: PhantomData<(K, V)>,
     alias_table: AliasTable<V>,
-    build_hasher: ahash::RandomState,
+    build_hasher: H,
 }
 
-impl<K: Hash, V: Clone + Hash + Eq> RetrievalHasher<K, V> {
-    pub fn new_random(probabilities: &HashMap<&V, f64>) -> Result<Self, AliasTableError<V>> {
+impl<K: Hash, V: Clone + Hash + Eq, H: BuildHasher> RetrievalHasher<K, V, H> {
+    pub fn new_with_hasher(
+        probabilities: &HashMap<&V, f64>,
+        hash_builder: H,
+    ) -> Result<Self, AliasTableError<V>> {
         let alias_table = AliasTable::from(probabilities)?;
         Ok(Self {
             _p: PhantomData,
             alias_table,
-            build_hasher: ahash::RandomState::new(),
+            build_hasher: hash_builder,
         })
     }
-
     /// Hashes `value` within its own `tag` domain, so that the different
     /// `hash_to_*`/`hash` methods never collide with each other just because
     /// they were called with the same underlying `key`.

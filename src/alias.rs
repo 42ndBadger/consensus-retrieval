@@ -104,6 +104,7 @@ impl<V> AliasTable<V> {
         let index = scaled as usize;
         let f = (scaled - index as f64) * self.average_weight;
         let entry = &self.table[index];
-        return &entry.value_and_alias[(f <= entry.weight) as usize];
+
+        &entry.value_and_alias[(f <= entry.weight) as usize]
     }
 }

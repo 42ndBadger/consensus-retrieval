@@ -1,4 +1,7 @@
-use std::{collections::HashMap, hash::Hash};
+use std::{
+    collections::HashMap,
+    hash::{BuildHasher, Hash},
+};
 
 use sux::{bits::BitVec, traits::BitVecValueOps};
 
@@ -15,7 +18,7 @@ impl ConsensusVector {
     pub fn new<K: Hash, V: Clone + Hash + Eq>(
         kv: &HashMap<HashCode, V>,
         insertion_vec: &InsertionVec,
-        hasher: &RetrievalHasher<K, V>,
+        hasher: &RetrievalHasher<K, V, impl BuildHasher>,
     ) -> Self {
         let tasks = get_consensus_tasks(kv, insertion_vec, hasher);
         let mut consensus_vec = BitVec::with_capacity(tasks.len() + Seed::BITS as usize - 1); // -1 ?
@@ -59,7 +62,7 @@ impl ConsensusVector {
 fn get_consensus_tasks<'a, K: Hash, V: Clone + Hash + Eq>(
     kv: &'a HashMap<HashCode, V>,
     insertion_vec: &InsertionVec,
-    hasher: &RetrievalHasher<K, V>,
+    hasher: &RetrievalHasher<K, V, impl BuildHasher>,
 ) -> Vec<Vec<(HashCode, &'a V)>> {
     let mut groups = vec![Vec::new(); insertion_vec.num_groups()];
     for (&k, v) in kv.iter() {
@@ -82,7 +85,7 @@ fn get_consensus_tasks<'a, K: Hash, V: Clone + Hash + Eq>(
 fn test_seed_valid<K: Hash, V: Clone + Hash + Eq>(
     seed: Seed,
     kv: &[(HashCode, &V)],
-    hasher: &RetrievalHasher<K, V>,
+    hasher: &RetrievalHasher<K, V, impl BuildHasher>,
 ) -> bool {
     kv.iter().all(|&(k, v)| &hasher.hash(k, seed) == v)
 }
