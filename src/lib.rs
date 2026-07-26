@@ -1,4 +1,4 @@
-use std::{collections::HashMap, hash::Hash, fmt::Debug, marker::PhantomData};
+use std::{collections::HashMap, fmt::Debug, hash::Hash, marker::PhantomData};
 
 use crate::{
     hasher::{HashCode, RetrievalHasher},
@@ -39,6 +39,28 @@ impl<K: Hash, V: Clone + Hash + Eq + Debug> ConsensusRetrieval<K, V> {
     }
 }
 
-fn calculate_frequencies<K: Hash, V: Clone>(kv: &HashMap<K, V>) -> Probabilities<'_, V> {
-    todo!()
+fn calculate_frequencies<K: Hash, V: Clone + Hash + Eq>(
+    kv: &HashMap<K, V>,
+) -> Probabilities<'_, V> {
+    let total_num = kv.len() as f64;
+    let num_vals = kv.values().fold(HashMap::<_, usize>::new(), |mut acc, v| {
+        *acc.entry(v).or_default() += 1;
+        acc
+    });
+    num_vals
+        .into_iter()
+        .map(|(v, num)| (v, num as f64 / total_num))
+        .collect()
+}
+
+#[cfg(test)]
+mod test {
+    use crate::calculate_frequencies;
+
+    #[test]
+    fn test_calc_frequencies() {
+        let kv = [(0, 0), (1, 1), (2, 0), (3, 0)].into();
+        let probs = calculate_frequencies(&kv);
+        assert_eq!(probs, [(&1, 0.25), (&0, 0.75)].into());
+    }
 }
