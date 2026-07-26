@@ -9,6 +9,8 @@ use crate::{
 pub struct InsertionVec {
     num_groups: usize,
     select: SelectZeroAdapt<Rank9>,
+    b: usize,
+    β: usize,
 }
 
 impl InsertionVec {
@@ -86,7 +88,12 @@ impl InsertionVec {
         }
         let select = SelectZeroAdapt::new(Rank9::new(bits));
 
-        Self { num_groups, select }
+        Self {
+            num_groups,
+            select,
+            b,
+            β,
+        }
     }
 
     pub fn num_groups(&self) -> usize {
@@ -94,7 +101,7 @@ impl InsertionVec {
     }
 
     /// ell_i
-    pub fn num_group_insertions(&self, group_idx: usize) -> Option<u32> {
+    fn num_group_insertions(&self, group_idx: usize) -> Option<usize> {
         if group_idx >= self.num_groups {
             return None;
         }
@@ -103,6 +110,16 @@ impl InsertionVec {
             0 => 0,
             _ => self.select.select_zero(group_idx - 1)? + 1,
         };
-        Some((end - start) as u32)
+        Some(end - start)
+    }
+
+    pub fn group_size(&self, group_idx: usize) -> Option<usize> {
+        let num_ins = self.num_group_insertions(group_idx)?;
+        Some(self.b + num_ins * self.β)
+    }
+
+    pub fn group_start(&self, group_idx: usize) -> Option<usize> {
+        todo!("also avoid duplicate work with group_size");
+        
     }
 }
