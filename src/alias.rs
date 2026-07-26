@@ -72,7 +72,7 @@ impl<V: Clone + Hash + Eq> AliasTable<V> {
             if i < n && w > avg_weight {
                 // Pack light bucket
                 table[i].value_and_alias[1] = table[j].value_and_alias[0].clone();
-                w = w - (avg_weight - table[i].weight);
+                w -= avg_weight - table[i].weight;
                 i = next_light(&table, avg_weight, i + 1);
             } else {
                 // Pack heavy bucket

@@ -22,6 +22,7 @@ impl InsertionVec {
     ) -> Self {
         let β = f64::ceil((b as f64).sqrt() * (b as f64).log2()) as usize;
         let ε = 1. / (b as f64);
+        #[allow(non_snake_case)]
         let H: f64 = probabilities.values().map(|p| -p * p.log2()).sum();
         let λ = (b as f64 + β as f64 / 2.) * (1. - ε) / H;
 
@@ -79,7 +80,9 @@ impl InsertionVec {
         }
 
         // Unary code, group by group in order: ell_i ones followed by a 0 divider.
-        let mut bits = BitVec::new(0);
+        let mut bits = BitVec::with_capacity(
+            num_insertions_per_group.iter().sum::<usize>() + num_insertions_per_group.iter().len(),
+        );
         for &ell in &num_insertions_per_group {
             for _ in 0..ell {
                 bits.push(true);
@@ -118,13 +121,20 @@ impl InsertionVec {
         Some(self.b + num_ins * self.β)
     }
 
+    // in bits
     pub fn group_start(&self, group_idx: usize) -> Option<usize> {
-        todo!("also avoid duplicate work with group_size");
+        // TODO more efficient without iteration?
+        if group_idx > self.num_groups {
+            return None;
+        }
+        Some(
+            (0..group_idx)
+                .map(|g| self.b + self.β * self.group_size(g).expect("valid"))
+                .sum(),
+        )
     }
 
     pub fn total_num_tasks(&self) -> usize {
-        (0..self.num_groups())
-            .map(|g| self.b + self.β * self.group_size(g).expect("valid"))
-            .sum()
+        self.group_start(self.num_groups).expect("valid")
     }
 }
