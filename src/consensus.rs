@@ -98,10 +98,9 @@ fn get_consensus_tasks<'a, K: Hash, V: Clone + Hash + Eq>(
 
     for (&k, v) in kv.iter() {
         let gidx = hasher.hash_to_group(k, insertion_vec.num_groups());
-        let num_tasks = insertion_vec.group_size(gidx).expect("valid");
-        let group_start = insertion_vec.group_start(gidx).expect("valid");
-        let offset = hasher.hash_to_task(k, num_tasks);
-        consensus_tasks[group_start + offset].push((k, v));
+        let group_bounds = insertion_vec.group_bounds(gidx).unwrap();
+        let offset = hasher.hash_to_task(k, group_bounds.width);
+        consensus_tasks[group_bounds.start + offset].push((k, v));
     }
 
     consensus_tasks

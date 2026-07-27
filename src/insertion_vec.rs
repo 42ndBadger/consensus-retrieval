@@ -18,8 +18,8 @@ pub struct InsertionVec {
 }
 
 pub struct GroupBounds {
-    start: usize,
-    width: usize,
+    pub start: usize,
+    pub width: usize,
 }
 
 impl InsertionVec {
@@ -112,19 +112,6 @@ impl InsertionVec {
         self.num_groups
     }
 
-    /// ell_i
-    fn num_group_insertions(&self, group_idx: usize) -> Option<usize> {
-        if group_idx >= self.num_groups {
-            return None;
-        }
-        let end = self.select.select_zero(group_idx)?;
-        let start = match group_idx {
-            0 => 0,
-            _ => self.select.select_zero(group_idx - 1)? + 1,
-        };
-        Some(end - start)
-    }
-
     pub fn group_bounds(&self, group_idx: usize) -> Option<GroupBounds> {
         if group_idx >= self.num_groups {
             return None;
@@ -152,26 +139,8 @@ impl InsertionVec {
         })
     }
 
-    pub fn group_size(&self, group_idx: usize) -> Option<usize> {
-        let num_ins = self.num_group_insertions(group_idx)?;
-        Some(self.b + num_ins * self.β)
-    }
-
-    // in bits
-    pub fn group_start(&self, group_idx: usize) -> Option<usize> {
-        // TODO more efficient without iteration?
-        if group_idx > self.num_groups {
-            return None;
-        }
-        Some(
-            (0..group_idx)
-                .map(|g| self.b + self.β * self.num_group_insertions(g).expect("valid"))
-                .sum(),
-        )
-    }
-
     pub fn total_num_tasks(&self) -> usize {
-        self.group_start(self.num_groups).expect("valid")
+        self.β * (self.select.len() - self.num_groups()) + self.b * self.num_groups()
     }
 }
 

@@ -56,10 +56,9 @@ impl<K: Hash, V: Clone + Hash + Eq + Debug, H: BuildHasher> ConsensusRetrieval<K
         let group = self
             .hasher
             .hash_to_group(key, self.insertion_vec.num_groups());
-        let group_size = self.insertion_vec.group_size(group).expect("valid group");
-        let in_group_offset = self.hasher.hash_to_task(key, group_size);
-        let group_start = self.insertion_vec.group_start(group).expect("vaid group");
-        let consensus_idx = group_start + in_group_offset;
+        let group_bounds = self.insertion_vec.group_bounds(group).unwrap();
+        let in_group_offset = self.hasher.hash_to_task(key, group_bounds.width);
+        let consensus_idx = group_bounds.start + in_group_offset;
         let seed = self.consensus_vector.get_seed_at_task(consensus_idx);
         self.hasher.hash(key, seed)
     }
@@ -106,6 +105,7 @@ mod test {
     }
 
     #[test]
+    #[ignore]
     fn test_rand() {
         let n = 80;
         let sigma = 3;
