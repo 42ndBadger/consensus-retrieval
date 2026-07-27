@@ -113,7 +113,6 @@ impl<V> AliasTable<V> {
 
 #[cfg(test)]
 mod tests {
-    use crate::alias;
     use std::fmt::Debug;
 
     use super::*;
