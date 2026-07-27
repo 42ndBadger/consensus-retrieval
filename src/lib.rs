@@ -5,14 +5,14 @@ use std::{
 };
 
 use crate::{
-    hasher::{HashCode, RetrievalHasher},
-    insertion_vec::InsertionVec,
+    hasher::{HashCode, RetrievalHasher}, insertion_vec::InsertionVec, parameters::Parameters,
 };
 
 mod alias;
 mod consensus;
 mod hasher;
 mod insertion_vec;
+mod parameters;
 
 pub struct ConsensusRetrieval<K: Hash, V: Clone + Hash + Eq, H: BuildHasher = ahash::RandomState> {
     insertion_vec: insertion_vec::InsertionVec,
@@ -37,7 +37,8 @@ impl<K: Hash, V: Clone + Hash + Eq + Debug, H: BuildHasher> ConsensusRetrieval<K
         let hasher = RetrievalHasher::new_with_hasher(&frequencies, hasher_bulder).unwrap();
         let kv: HashMap<HashCode, V> = hasher.convert_to_hash_codes(kv).expect("not duplicates");
 
-        let insertion = InsertionVec::new(&kv, &frequencies, b, &hasher);
+        let parameters = Parameters::new_like_in_proof(b);
+        let insertion = InsertionVec::new(&kv, &frequencies, parameters, &hasher);
         let consensus = consensus::ConsensusVector::new(&kv, &insertion, &hasher);
 
         Self {

@@ -7,6 +7,7 @@ use sux::prelude::*;
 use crate::{
     Probabilities,
     hasher::{HashCode, RetrievalHasher},
+    parameters::Parameters,
 };
 
 pub struct InsertionVec {
@@ -20,19 +21,14 @@ impl InsertionVec {
     pub fn new<K: Hash, V: Clone + Eq + Hash>(
         kv: &HashMap<HashCode, V>,
         probabilities: &Probabilities<V>,
-        b: usize,
+        parms: Parameters,
         hasher: &RetrievalHasher<K, V, impl BuildHasher>,
     ) -> Self {
-        assert!(b > 0, "b must be positive");
-
-        let β = f64::ceil((b as f64).sqrt() * (b as f64).log2()) as usize + 1; // todo how ensure > 0?
-        dbg!(&β);
-        let ε = 1. / (b as f64 + 1.); // todo how to ensure < 1?
-        dbg!(&ε);
+        let b = parms.inital_group_width;
         #[allow(non_snake_case)]
         let H: f64 = probabilities.values().map(|p| -p * p.log2()).sum();
         dbg!(&H);
-        let λ = (b as f64 + β as f64 / 2.) * (1. - ε) / H;
+        let λ = parms.avg_group_load / H;
         dbg!(&λ);
 
         let num_groups = ((kv.len() as f64) / λ).ceil() as usize;
@@ -44,7 +40,6 @@ impl InsertionVec {
             kv_per_group[group].push((key, value));
         }
 
-        let max_l = -ε.log2() + 3. * β as f64;
 
         // l_right = -log2(q_right); boundary q_right = 1 (vacuous success) => l = 0
         let mut l_right = 0f64;
@@ -52,7 +47,7 @@ impl InsertionVec {
         for (group, group_kv) in kv_per_group.iter().enumerate().rev() {
             for num_insertions in 0.. {
                 let mut good_event = true;
-                let num_tasks = b + β * num_insertions;
+                let num_tasks = b + parms.insertion_increment * num_insertions;
                 let mut task_log_p = vec![0f64; num_tasks];
 
                 for (key, value) in group_kv {
@@ -71,13 +66,13 @@ impl InsertionVec {
                     let p = (-task_log_p[task]).exp2();
                     l = l + task_log_p[task] - (2. - q_next * p).log2();
 
-                    if l > max_l {
+                    if l > parms.max_difficulty_of_task {
                         good_event = false;
                         break;
                     }
                 }
 
-                if l > max_l - β as f64 {
+                if l > parms.max_difficulty_at_group_border {
                     good_event = false;
                 }
 
@@ -104,8 +99,8 @@ impl InsertionVec {
         Self {
             num_groups,
             select,
-            b,
-            β,
+            b: parms.inital_group_width,
+            β: parms.insertion_increment,
         }
     }
 
