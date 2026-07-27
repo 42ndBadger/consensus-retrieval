@@ -21,13 +21,19 @@ impl ConsensusVector {
         hasher: &RetrievalHasher<K, V, impl BuildHasher>,
     ) -> Self {
         let tasks = get_consensus_tasks(kv, insertion_vec, hasher);
-        let mut consensus_vec = BitVec::with_capacity(tasks.len() + Seed::BITS as usize - 1); // -1 ?
+        // root seed has size Seed::BITS - 1
+        let mut consensus_vec = BitVec::with_capacity(tasks.len() + Seed::BITS as usize - 1);
+        // During the construction the consensus vector is consensus_vec with
+        // current appended at the end
         let mut current: Seed = 0;
 
         while consensus_vec.len() < tasks.len() {
             let task = consensus_vec.len();
             if test_seed_valid(current, &tasks[task], hasher) {
-                // next task
+                // next task:
+                // append a bit to the consensus vector by shifting the most
+                // significant bit of current onto consusus_vec making space for
+                // a new task in current
                 consensus_vec.push(current >> (Seed::BITS - 1) == 1);
                 current <<= 1;
                 continue;

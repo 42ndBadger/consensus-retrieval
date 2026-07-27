@@ -30,9 +30,12 @@ impl<K: Hash, V: Clone + Hash + Eq + Debug> ConsensusRetrieval<K, V> {
 
 impl<K: Hash, V: Clone + Hash + Eq + Debug, H: BuildHasher> ConsensusRetrieval<K, V, H> {
     pub fn new_with_hasher(kv: &HashMap<K, V>, b: usize, hasher_bulder: H) -> Self {
+        if kv.is_empty() {
+            panic!("empty input")
+        }
         let frequencies = calculate_frequencies(kv);
         let hasher = RetrievalHasher::new_with_hasher(&frequencies, hasher_bulder).unwrap();
-        let kv: HashMap<HashCode, V> = hasher.conert_to_hash_codes(kv).expect("not duplicates");
+        let kv: HashMap<HashCode, V> = hasher.convert_to_hash_codes(kv).expect("not duplicates");
 
         let insertion = InsertionVec::new(&kv, &frequencies, b, &hasher);
         let consensus = consensus::ConsensusVector::new(&kv, &insertion, &hasher);

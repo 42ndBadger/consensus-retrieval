@@ -62,7 +62,7 @@ impl<K: Hash, V: Clone + Hash + Eq, H: BuildHasher> RetrievalHasher<K, V, H> {
 
     /// Also checks wheter no two keys have the same hash code.
     /// Returns `None` if that's the case.
-    pub fn conert_to_hash_codes(&self, kv: &HashMap<K, V>) -> Option<HashMap<HashCode, V>> {
+    pub fn convert_to_hash_codes(&self, kv: &HashMap<K, V>) -> Option<HashMap<HashCode, V>> {
         let mut result = HashMap::with_capacity(kv.len());
         for (k, v) in kv {
             let code = self.hash_to_hash_code(k);
