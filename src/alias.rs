@@ -7,15 +7,25 @@ pub enum AliasTableError<V> {
     InvalidWeight(V, f64),
     ZeroTotalWeight,
 }
+
 #[derive(Debug, Clone, PartialEq)]
 struct Entry<V> {
-    weight: f64,
+    // Own-item weight as a fraction of the bucket's average weight, scaled
+    // to the full u64 range. Comparing a uniformly random u64 against this
+    // threshold is equivalent to comparing a uniform float in [0,1) against
+    // the fraction, but `sample` never has to touch floating point.
+    threshold: u64,
     value_and_alias: [V; 2], // value, alias — in array to allow branchless selection
 }
 #[derive(Debug, Clone, PartialEq)]
 pub struct AliasTable<V> {
     table: Vec<Entry<V>>,
-    average_weight: f64,
+}
+
+#[derive(Debug, Clone)]
+struct BuildEntry<V> {
+    weight: f64,
+    value_and_alias: [V; 2],
 }
 
 impl<V: Clone + Hash + Eq> AliasTable<V> {
@@ -35,7 +45,7 @@ impl<V: Clone + Hash + Eq> AliasTable<V> {
                 return Err(AliasTableError::InvalidWeight(v.clone(), w));
             }
             total_weight += w;
-            table.push(Entry {
+            table.push(BuildEntry {
                 weight: w,
                 value_and_alias: [v.clone(), v.clone()],
             })
@@ -46,12 +56,12 @@ impl<V: Clone + Hash + Eq> AliasTable<V> {
         }
         let avg_weight = total_weight / n as f64;
 
-        fn next_light<V>(table: &[Entry<V>], avg_weight: f64, from: usize) -> usize {
+        fn next_light<V>(table: &[BuildEntry<V>], avg_weight: f64, from: usize) -> usize {
             (from..table.len())
                 .find(|&i| table[i].weight <= avg_weight)
                 .unwrap_or(table.len())
         }
-        fn next_heavy<V>(table: &[Entry<V>], avg_weight: f64, from: usize) -> usize {
+        fn next_heavy<V>(table: &[BuildEntry<V>], avg_weight: f64, from: usize) -> usize {
             (from..table.len())
                 .find(|&i| table[i].weight > avg_weight)
                 .unwrap_or(table.len())
@@ -60,54 +70,52 @@ impl<V: Clone + Hash + Eq> AliasTable<V> {
         let mut j = next_heavy(&table, avg_weight, 0);
         let mut i = next_light(&table, avg_weight, 0);
 
-        if j == n {
-            // All have weight = avg_weight
-            return Ok(Self {
-                table,
-                average_weight: avg_weight,
-            });
-        }
+        if j != n {
+            let mut w = table[j].weight;
 
-        let mut w = table[j].weight;
-
-        while j < n {
-            if i < n && w > avg_weight {
-                // Pack light bucket
-                table[i].value_and_alias[1] = table[j].value_and_alias[0].clone();
-                w -= avg_weight - table[i].weight;
-                i = next_light(&table, avg_weight, i + 1);
-            } else {
-                // Pack heavy bucket
-                table[j].weight = w;
-                let j_prime = next_heavy(&table, avg_weight, j + 1);
-                if j_prime == n {
-                    break;
+            while j < n {
+                if i < n && w > avg_weight {
+                    // Pack light bucket
+                    table[i].value_and_alias[1] = table[j].value_and_alias[0].clone();
+                    w -= avg_weight - table[i].weight;
+                    i = next_light(&table, avg_weight, i + 1);
+                } else {
+                    // Pack heavy bucket
+                    table[j].weight = w;
+                    let j_prime = next_heavy(&table, avg_weight, j + 1);
+                    if j_prime == n {
+                        break;
+                    }
+                    table[j].value_and_alias[1] = table[j_prime].value_and_alias[0].clone();
+                    w = table[j_prime].weight - (avg_weight - w);
+                    j = j_prime;
                 }
-                table[j].value_and_alias[1] = table[j_prime].value_and_alias[0].clone();
-                w = table[j_prime].weight - (avg_weight - w);
-                j = j_prime;
             }
         }
 
-        Ok(Self {
-            table,
-            average_weight: avg_weight,
-        })
+        let table = table
+            .into_iter()
+            .map(|entry| Entry {
+                threshold: ((entry.weight / avg_weight) * u64::MAX as f64) as u64,
+                value_and_alias: entry.value_and_alias,
+            })
+            .collect();
+
+        Ok(Self { table })
     }
 }
 
 impl<V> AliasTable<V> {
-    /// Given a uniform random number `u` in [0, 1), it return a value from the
-    /// table with the probailities specified during construction. Runs in O(1)
-    /// time.
-    pub fn sample(&self, u: f64) -> &V {
-        let n = self.table.len();
-        let scaled = u * n as f64;
-        let index = scaled as usize;
-        let f = (scaled - index as f64) * self.average_weight;
+    /// Given a uniformly random `r`, returns a value from the table with the
+    /// probabilities specified during construction. Runs in O(1) time.
+    pub fn sample(&self, r: u64) -> &V {
+        let n = self.table.len() as u64;
+        let product = r as u128 * n as u128;
+        let index = (product >> u64::BITS) as usize;
+        let remainder = product as u64;
         let entry = &self.table[index];
 
-        &entry.value_and_alias[(f <= entry.weight) as usize]
+        &entry.value_and_alias[(remainder <= entry.threshold) as usize]
     }
 }
 
@@ -122,9 +130,9 @@ mod tests {
         let uniform_distribution =
             HashMap::from([(&1, 0.25f64), (&2, 0.25f64), (&3, 0.25f64), (&4, 0.25f64)]);
         let table = AliasTable::from(&uniform_distribution).unwrap();
-        for i in 0..100 {
-            let u = 1. / 100. * i as f64;
-            let sample = table.sample(u);
+        for i in 0..100u64 {
+            let r = (u64::MAX / 100) * i;
+            let sample = table.sample(r);
             assert!(uniform_distribution.contains_key(sample));
         }
     }
@@ -151,11 +159,9 @@ mod tests {
         let mut result = HashMap::new();
         let prob_of_entry = 1. / alias_table.table.len() as f64;
         for entry in &alias_table.table {
-            println!(
-                "entry: {entry:?} p: {}",
-                entry.weight / alias_table.average_weight / alias_table.table.len() as f64
-            );
-            let p = entry.weight / alias_table.average_weight * prob_of_entry;
+            let ratio = entry.threshold as f64 / u64::MAX as f64;
+            println!("entry: {entry:?} p: {}", ratio / alias_table.table.len() as f64);
+            let p = ratio * prob_of_entry;
             result
                 .entry(&entry.value_and_alias[0])
                 .and_modify(|w| *w += p)

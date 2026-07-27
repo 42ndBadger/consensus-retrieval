@@ -49,11 +49,8 @@ impl<K: Hash, V: Clone + Hash + Eq, H: BuildHasher> RetrievalHasher<K, V, H> {
     }
 
     pub fn hash(&self, key: HashCode, seed: Seed) -> V {
-        // todo avoid floats
         let h = self.hash64(2, (key, seed));
-        // Top 53 bits of the hash -> a uniform f64 in [0, 1).
-        let u = (h >> 11) as f64 / (1u64 << 53) as f64;
-        self.alias_table.sample(u).clone()
+        self.alias_table.sample(h).clone()
     }
 
     pub fn hash_to_hash_code(&self, key: &K) -> HashCode {
