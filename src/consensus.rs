@@ -64,21 +64,16 @@ fn get_consensus_tasks<'a, K: Hash, V: Clone + Hash + Eq>(
     insertion_vec: &InsertionVec,
     hasher: &RetrievalHasher<K, V, impl BuildHasher>,
 ) -> Vec<Vec<(HashCode, &'a V)>> {
-    let mut groups = vec![Vec::new(); insertion_vec.num_groups()];
-    for (&k, v) in kv.iter() {
-        let group = hasher.hash_to_group(k, insertion_vec.num_groups());
-        groups[group].push((k, v));
-    }
-    // todo don't do work twice? reuse
     let mut consensus_tasks = vec![Vec::new(); insertion_vec.total_num_tasks()];
-    for (gidx, group) in groups.iter().enumerate() {
-        let group_start = insertion_vec.group_start(gidx).expect("valid");
+    
+    for (&k, v) in kv.iter() {
+        let gidx = hasher.hash_to_group(k, insertion_vec.num_groups());
         let num_tasks = insertion_vec.group_size(gidx).expect("valid");
-        for &(k, v) in group {
-            let offset = hasher.hash_to_task(k, num_tasks);
-            consensus_tasks[group_start + offset].push((k, v));
-        }
+        let group_start = insertion_vec.group_start(gidx).expect("valid");
+        let offset = hasher.hash_to_task(k, num_tasks);
+        consensus_tasks[group_start + offset].push((k, v));
     }
+
     consensus_tasks
 }
 
