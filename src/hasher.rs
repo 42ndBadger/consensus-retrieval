@@ -26,6 +26,7 @@ impl<K: Hash, V: Clone + Hash + Eq, H: BuildHasher> RetrievalHasher<K, V, H> {
             build_hasher: hash_builder,
         })
     }
+    
     /// Hashes `value` within its own `tag` domain, so that the different
     /// `hash_to_*`/`hash` methods never collide with each other just because
     /// they were called with the same underlying `key`.
@@ -37,17 +38,18 @@ impl<K: Hash, V: Clone + Hash + Eq, H: BuildHasher> RetrievalHasher<K, V, H> {
     }
 
     pub fn hash_to_group(&self, key: HashCode, num_groups: usize) -> usize {
-        (self.hash64(0, key) % num_groups as u64) as usize
+        fast_range(self.hash64(0, key), num_groups)
     }
 
     /// Must return "independent" hash values for different `num_tasks`.
     pub fn hash_to_task(&self, key: HashCode, num_tasks: usize) -> usize {
         // num_tasks is folded into the hashed bytes (not just the modulus),
         // so results for different num_tasks don't correlate.
-        (self.hash64(1, (key, num_tasks)) % num_tasks as u64) as usize
+        fast_range(self.hash64(1, (key, num_tasks)), num_tasks)
     }
 
     pub fn hash(&self, key: HashCode, seed: Seed) -> V {
+        // todo avoid floats
         let h = self.hash64(2, (key, seed));
         // Top 53 bits of the hash -> a uniform f64 in [0, 1).
         let u = (h >> 11) as f64 / (1u64 << 53) as f64;
@@ -70,4 +72,9 @@ impl<K: Hash, V: Clone + Hash + Eq, H: BuildHasher> RetrievalHasher<K, V, H> {
         }
         Some(result)
     }
+}
+
+#[inline]
+fn fast_range(seed: Seed, max: usize) -> usize {
+    ((seed as u128 * max as u128) >> Seed::BITS) as usize
 }
