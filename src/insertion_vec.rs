@@ -187,4 +187,65 @@ mod tests {
 
         assert!(expected_next_group_start == insertion_vec.total_num_tasks());
     }
+
+    #[test]
+    /// AI Generated
+    fn max_difficulties_are_never_exceeded() {
+        let n = 100;
+        let mut kv = HashMap::new();
+        for i in 0..n {
+            kv.insert(i, 0 == i % 4);
+        }
+        let probabilities: HashMap<&bool, f64> = HashMap::from([(&true, 0.25), (&false, 0.75)]);
+        let params = Parameters::new_like_in_proof(2);
+        let hasher: RetrievalHasher<u64, bool, ahash::RandomState> =
+            RetrievalHasher::new_with_hasher(&probabilities, ahash::RandomState::new()).unwrap();
+
+        let insertion_vec = InsertionVec::new(&kv, &probabilities, params, &hasher);
+        let num_groups = insertion_vec.num_groups();
+
+        // Group items exactly like `InsertionVec::new` does, so we can replay
+        // the same task assignment (hash_to_task is a pure function of
+        // (key, num_tasks) for a given hasher) using the num_tasks that was
+        // actually committed to for each group, and check that the l values
+        // the construction is supposed to have bounded really are.
+        let mut kv_per_group = vec![vec![]; num_groups];
+        for (key, value) in &kv {
+            let group = hasher.hash_to_group(*key, num_groups);
+            kv_per_group[group].push((key, value));
+        }
+
+        let mut l_right = 0f64;
+        for group in (0..num_groups).rev() {
+            let bounds = insertion_vec.group_bounds(group).unwrap();
+            let num_tasks = bounds.width;
+
+            let mut task_log_p = vec![0f64; num_tasks];
+            for (key, value) in &kv_per_group[group] {
+                let task = hasher.hash_to_task(**key, num_tasks);
+                task_log_p[task] -= probabilities[*value].log2();
+            }
+
+            let mut l = l_right;
+            for task in (0..num_tasks).rev() {
+                let q_next = (-l).exp2();
+                let p = (-task_log_p[task]).exp2();
+                l = l + task_log_p[task] - (2. - q_next * p).log2();
+
+                assert!(
+                    l <= params.max_difficulty_of_task,
+                    "group {group} task {task}: l={l} exceeds max_difficulty_of_task={}",
+                    params.max_difficulty_of_task
+                );
+            }
+
+            assert!(
+                l <= params.max_difficulty_at_group_border,
+                "group {group}: border l={l} exceeds max_difficulty_at_group_border={}",
+                params.max_difficulty_at_group_border
+            );
+
+            l_right = l;
+        }
+    }
 }
