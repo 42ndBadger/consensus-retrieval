@@ -4,6 +4,7 @@ use std::{
     hash::{BuildHasher, Hash},
 };
 
+use indicatif::ProgressBar;
 use sux::{bits::BitVec, traits::BitVecValueOps};
 
 use crate::{
@@ -22,6 +23,7 @@ impl ConsensusVector {
         hasher: &RetrievalHasher<K, V, impl BuildHasher>,
     ) -> Self {
         let tasks = get_consensus_tasks(kv, insertion_vec, hasher);
+        let progress = ProgressBar::new(tasks.len() as u64);
         // root seed has size Seed::BITS - 1
         let mut consensus_vec = BitVec::with_capacity(tasks.len() + Seed::BITS as usize - 1);
         // During the construction the consensus vector is consensus_vec with
@@ -32,6 +34,7 @@ impl ConsensusVector {
 
         while consensus_vec.len() < tasks.len() {
             let task = consensus_vec.len();
+            progress.set_position(task as u64);
 
             let task_valid = tasks[task]
                 .iter()

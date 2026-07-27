@@ -5,7 +5,9 @@ use std::{
 };
 
 use crate::{
-    hasher::{HashCode, RetrievalHasher}, insertion_vec::InsertionVec, parameters::Parameters,
+    hasher::{HashCode, RetrievalHasher},
+    insertion_vec::InsertionVec,
+    parameters::Parameters,
 };
 
 mod alias;
@@ -38,6 +40,7 @@ impl<K: Hash, V: Clone + Hash + Eq + Debug, H: BuildHasher> ConsensusRetrieval<K
         let kv: HashMap<HashCode, V> = hasher.convert_to_hash_codes(kv).expect("not duplicates");
 
         let parameters = Parameters::new_like_in_proof(b);
+        dbg!(&parameters);
         let insertion = InsertionVec::new(&kv, &frequencies, parameters, &hasher);
         let consensus = consensus::ConsensusVector::new(&kv, &insertion, &hasher);
 
@@ -103,7 +106,6 @@ mod test {
     }
 
     #[test]
-    #[ignore]
     fn test_rand() {
         let n = 80;
         let sigma = 3;
