@@ -2,6 +2,7 @@ use std::{
     collections::HashMap,
     fmt::Debug,
     hash::{BuildHasher, Hash},
+    mem::{size_of, size_of_val},
 };
 
 use crate::{
@@ -49,6 +50,20 @@ impl<K: Hash, V: Clone + Hash + Eq + Debug, H: BuildHasher> ConsensusRetrieval<K
             consensus_vector: consensus,
             hasher,
         }
+    }
+
+    /// Total space (stack + heap) this data structure occupies, in bytes.
+    pub fn space_in_bytes(&self) -> usize {
+        // `size_of::<Self>()` already covers each field's own shallow
+        // (stack) footprint; add only their heap contents on top.
+        size_of::<Self>()
+            + (self.insertion_vec.space_in_bytes() - size_of_val(&self.insertion_vec))
+            + (self.consensus_vector.space_in_bytes() - size_of_val(&self.consensus_vector))
+            + (self.hasher.space_in_bytes() - size_of_val(&self.hasher))
+    }
+
+    pub fn hash_evaluations(&self) -> u64 {
+        self.consensus_vector.hash_evaluations()
     }
 
     pub fn query(&self, key: &K) -> V {

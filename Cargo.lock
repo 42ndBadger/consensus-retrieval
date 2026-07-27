@@ -296,6 +296,7 @@ version = "0.1.0"
 dependencies = [
  "ahash",
  "indicatif",
+ "mem_dbg",
  "rand",
  "sux",
 ]

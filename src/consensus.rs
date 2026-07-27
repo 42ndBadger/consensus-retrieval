@@ -2,9 +2,11 @@ use std::{
     collections::HashMap,
     fmt::Debug,
     hash::{BuildHasher, Hash},
+    mem::{size_of, size_of_val},
 };
 
 use indicatif::ProgressBar;
+use mem_dbg::{MemSize, SizeFlags};
 use sux::{bits::BitVec, traits::BitVecValueOps};
 
 use crate::{
@@ -14,6 +16,7 @@ use crate::{
 
 pub struct ConsensusVector {
     bitvec: BitVec<Vec<Seed>>,
+    hash_evaluations: u64,
 }
 
 impl ConsensusVector {
@@ -25,6 +28,7 @@ impl ConsensusVector {
         let tasks = get_consensus_tasks(kv, insertion_vec, hasher);
         let progress = ProgressBar::new(tasks.len() as u64);
         let mut iterations = 0;
+        let mut hash_evaluations: u64 = 0;
         // root seed has size Seed::BITS - 1
         let mut consensus_vec = BitVec::with_capacity(tasks.len() + Seed::BITS as usize - 1);
         // During the construction the consensus vector is consensus_vec with
@@ -41,9 +45,10 @@ impl ConsensusVector {
             }
             iterations += 1;
 
-            let task_valid = tasks[task]
-                .iter()
-                .all(|&(k, v)| &hasher.hash(k, current) == v);
+            let task_valid = tasks[task].iter().all(|&(k, v)| {
+                hash_evaluations += 1;
+                &hasher.hash(k, current) == v
+            });
             // println!(
             //     "Task {task} with keys {:?} is valid? {task_valid} seed {current}",
             //     tasks[task]
@@ -81,6 +86,7 @@ impl ConsensusVector {
         println!("{consensus_vec}");
         Self {
             bitvec: consensus_vec,
+            hash_evaluations,
         }
     }
 
@@ -91,6 +97,17 @@ impl ConsensusVector {
             .reverse_bits(); // todo avoid reverse...
         // println!("queried seed {seed} at {task_idx}");
         seed
+    }
+
+    /// Number of times `RetrievalHasher::hash` was called while constructing
+    /// this consensus vector.
+    pub fn hash_evaluations(&self) -> u64 {
+        self.hash_evaluations
+    }
+
+    /// Total space (stack + heap) this structure occupies, in bytes.
+    pub fn space_in_bytes(&self) -> usize {
+        size_of::<Self>() + (self.bitvec.mem_size(SizeFlags::default()) - size_of_val(&self.bitvec))
     }
 }
 

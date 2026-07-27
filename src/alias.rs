@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::hash::Hash;
+use std::mem::size_of;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AliasTableError<V> {
@@ -106,6 +107,13 @@ impl<V: Clone + Hash + Eq> AliasTable<V> {
 }
 
 impl<V> AliasTable<V> {
+    /// Total space (stack + heap) this table occupies, in bytes. Counts each
+    /// stored value's own (stack) footprint; if `V` itself owns heap data
+    /// (e.g. `String`), that indirect data isn't counted.
+    pub fn space_in_bytes(&self) -> usize {
+        size_of::<Self>() + self.table.len() * size_of::<Entry<V>>()
+    }
+
     /// Given a uniformly random `r`, returns a value from the table with the
     /// probabilities specified during construction. Runs in O(1) time.
     pub fn sample(&self, r: u64) -> &V {

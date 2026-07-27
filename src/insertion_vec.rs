@@ -1,6 +1,8 @@
+use mem_dbg::{MemSize, SizeFlags};
 use std::{
     collections::HashMap,
     hash::{BuildHasher, Hash},
+    mem::{size_of, size_of_val},
 };
 use sux::prelude::*;
 
@@ -141,6 +143,14 @@ impl InsertionVec {
 
     pub fn total_num_tasks(&self) -> usize {
         self.β * (self.select.len() - self.num_groups()) + self.b * self.num_groups()
+    }
+
+    /// Total space (stack + heap) this structure occupies, in bytes.
+    pub fn space_in_bytes(&self) -> usize {
+        // `size_of::<Self>()` already covers `select`'s own shallow (stack)
+        // footprint; add only the heap allocations (bitvector words, Rank9
+        // counters, the select index) on top of that.
+        size_of::<Self>() + (self.select.mem_size(SizeFlags::default()) - size_of_val(&self.select))
     }
 }
 

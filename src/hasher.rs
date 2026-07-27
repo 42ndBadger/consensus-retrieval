@@ -3,6 +3,7 @@ use std::{
     collections::HashMap,
     hash::{BuildHasher, Hash, Hasher},
     marker::PhantomData,
+    mem::{size_of, size_of_val},
 };
 
 pub type Seed = u64;
@@ -68,6 +69,15 @@ impl<K: Hash, V: Clone + Hash + Eq, H: BuildHasher> RetrievalHasher<K, V, H> {
             }
         }
         Some(result)
+    }
+
+    /// Total space (stack + heap) this structure occupies, in bytes.
+    pub fn space_in_bytes(&self) -> usize {
+        // `size_of::<Self>()` already covers `alias_table`'s own shallow
+        // (stack) footprint (plus `build_hasher` and the zero-sized
+        // `PhantomData`); add only its heap contents on top.
+        size_of::<Self>()
+            + (self.alias_table.space_in_bytes() - size_of_val(&self.alias_table))
     }
 }
 
