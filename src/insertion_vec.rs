@@ -17,6 +17,11 @@ pub struct InsertionVec {
     β: usize,
 }
 
+pub struct GroupBounds {
+    start: usize,
+    width: usize,
+}
+
 impl InsertionVec {
     pub fn new<K: Hash, V: Clone + Eq + Hash>(
         kv: &HashMap<HashCode, V>,
@@ -39,7 +44,6 @@ impl InsertionVec {
             let group = hasher.hash_to_group(*key, num_groups);
             kv_per_group[group].push((key, value));
         }
-
 
         // l_right = -log2(q_right); boundary q_right = 1 (vacuous success) => l = 0
         let mut l_right = 0f64;
@@ -121,6 +125,33 @@ impl InsertionVec {
         Some(end - start)
     }
 
+    pub fn group_bounds(&self, group_idx: usize) -> Option<GroupBounds> {
+        if group_idx >= self.num_groups {
+            return None;
+        }
+
+        let ins_end = self.select.select_zero(group_idx)?;
+        let ins_start = match group_idx {
+            0 => 0,
+            _ => self.select.select_zero(group_idx - 1)? + 1,
+        };
+        let num_insertions = ins_end - ins_start;
+
+        let group_width = self.b + num_insertions * self.β;
+
+        let insertions_in_prior_groups = if group_idx > 0 {
+            ins_start - group_idx
+        } else {
+            0
+        };
+        let group_start = group_idx * self.b + insertions_in_prior_groups * self.β;
+
+        Some(GroupBounds {
+            start: group_start,
+            width: group_width,
+        })
+    }
+
     pub fn group_size(&self, group_idx: usize) -> Option<usize> {
         let num_ins = self.num_group_insertions(group_idx)?;
         Some(self.b + num_ins * self.β)
@@ -134,12 +165,57 @@ impl InsertionVec {
         }
         Some(
             (0..group_idx)
-                .map(|g| self.b + self.β * self.group_size(g).expect("valid"))
+                .map(|g| self.b + self.β * self.num_group_insertions(g).expect("valid"))
                 .sum(),
         )
     }
 
     pub fn total_num_tasks(&self) -> usize {
         self.group_start(self.num_groups).expect("valid")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use std::collections::HashMap;
+
+    use crate::{
+        hasher::{HashCode, RetrievalHasher},
+        insertion_vec::InsertionVec,
+        parameters::Parameters,
+    };
+
+    #[test]
+    fn small_group_boundies_match() {
+        let n = 100;
+        let mut kv = HashMap::new();
+        for i in 0..n {
+            kv.insert(i, i % 2);
+        }
+        let probabilities: HashMap<&HashCode, f64> = HashMap::from([(&0, 0.5), (&1, 0.5)]);
+        let params = Parameters::new_like_in_proof(2);
+        let hasher: RetrievalHasher<u64, u64, ahash::RandomState> =
+            RetrievalHasher::new_with_hasher(&probabilities, ahash::RandomState::new()).unwrap();
+
+        let insertion_vec = InsertionVec::new(&kv, &probabilities, params, &hasher);
+
+        // H = 1
+        let num_groups = (n as f64 / params.avg_group_load).ceil() as usize;
+        assert!(insertion_vec.num_groups() == num_groups);
+
+        let mut expected_next_group_start = 0;
+        for g in 0..num_groups {
+            let bounds = insertion_vec.group_bounds(g).unwrap();
+            assert!(
+                bounds.start == expected_next_group_start,
+                "expected group {g} to start at {expected_next_group_start} but it started at {}",
+                bounds.start
+            );
+            assert!(bounds.width >= params.inital_group_width);
+            expected_next_group_start += bounds.width;
+        }
+
+        assert!(expected_next_group_start == insertion_vec.total_num_tasks());
     }
 }
