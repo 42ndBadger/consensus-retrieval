@@ -10,3 +10,9 @@ sux = "0.14.0"
 
 [dev-dependencies]
 rand = "0.10.2"
+
+[profile.release]
+debug = true
+strip = false
+# lto = "thin"
+# codegen-units = 1

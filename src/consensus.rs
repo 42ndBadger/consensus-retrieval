@@ -24,6 +24,7 @@ impl ConsensusVector {
     ) -> Self {
         let tasks = get_consensus_tasks(kv, insertion_vec, hasher);
         let progress = ProgressBar::new(tasks.len() as u64);
+        let mut iterations = 0;
         // root seed has size Seed::BITS - 1
         let mut consensus_vec = BitVec::with_capacity(tasks.len() + Seed::BITS as usize - 1);
         // During the construction the consensus vector is consensus_vec with
@@ -34,7 +35,11 @@ impl ConsensusVector {
 
         while consensus_vec.len() < tasks.len() {
             let task = consensus_vec.len();
-            progress.set_position(task as u64);
+
+            if iterations % 1024 == 0 {
+                progress.set_position(task as u64);
+            }
+            iterations += 1;
 
             let task_valid = tasks[task]
                 .iter()
@@ -104,14 +109,6 @@ fn get_consensus_tasks<'a, K: Hash, V: Clone + Hash + Eq>(
     }
 
     consensus_tasks
-}
-
-fn test_seed_valid<K: Hash, V: Clone + Hash + Eq>(
-    seed: Seed,
-    kv: &[(HashCode, &V)],
-    hasher: &RetrievalHasher<K, V, impl BuildHasher>,
-) -> bool {
-    kv.iter().all(|&(k, v)| &hasher.hash(k, seed) == v)
 }
 
 #[cfg(test)]

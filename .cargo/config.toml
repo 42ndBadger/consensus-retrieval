@@ -1,0 +1,4 @@
+rustflags = ["-Cforce-frame-pointers=yes", "-Ctarget-cpu=native"]
+
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-Clink-arg=-Wl,--no-rosegment"]
