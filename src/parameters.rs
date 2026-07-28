@@ -11,7 +11,7 @@ impl Parameters {
     pub fn new_like_in_proof(b: usize) -> Self {
         assert!(b > 0, "b must be positive");
         let ε = 1. / (b as f64 + 1.); // todo how to ensure < 1?
-        Self::new_from_raw(b, -ε.log2(), 1.)
+        Self::new_from_raw(b, ε, 1.)
     }
 
     pub fn new_from_raw(b: usize, ε: f64, beta_scale: f64) -> Self {
