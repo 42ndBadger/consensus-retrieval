@@ -34,7 +34,7 @@ impl ConsensusVector {
         println!("max keys per task: {max_keys_per_task}");
 
         let progress = ProgressBar::new(tasks.len() as u64);
-        let mut iterations = 0;
+        let mut iterations: u64 = 0;
         let mut hash_evaluations: u64 = 0;
         // root seed has size Seed::BITS - 1
         let mut consensus_vec = BitVec::with_capacity(tasks.len() + Seed::BITS as usize - 1);
