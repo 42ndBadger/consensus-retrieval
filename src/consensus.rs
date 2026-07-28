@@ -47,7 +47,7 @@ impl ConsensusVector {
 
             let task_valid = tasks[task].iter().all(|&(k, v)| {
                 hash_evaluations += 1;
-                &hasher.hash(k, current) == v
+                hasher.hash(k, current) == v
             });
             // println!(
             //     "Task {task} with keys {:?} is valid? {task_valid} seed {current}",
