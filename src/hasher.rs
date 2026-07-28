@@ -86,3 +86,46 @@ impl<K: Hash, V: Clone + Hash + Eq, H: BuildHasher> RetrievalHasher<K, V, H> {
 fn fast_range(seed: Seed, max: usize) -> usize {
     ((seed as u128 * max as u128) >> Seed::BITS) as usize
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Calls `hash` many times with a fixed key and varying seeds, and
+    /// checks the empirical frequency of each value against the
+    /// probability it was constructed with. This exercises the whole
+    /// pipeline (ahash mixing, `fast_range`/`AliasTable::sample`'s
+    /// multiply-shift), not just the alias table's internal weights.
+    #[test]
+    fn hash_matches_distribution_empirically() {
+        let probabilities: HashMap<&u32, f64> = HashMap::from([(&0, 0.1), (&1, 0.6), (&2, 0.3)]);
+        let hasher: RetrievalHasher<u64, u32, ahash::RandomState> =
+            RetrievalHasher::new_with_hasher(&probabilities, ahash::RandomState::new()).unwrap();
+
+        let trials = 200_000u64;
+        let key = 42;
+        let mut counts: HashMap<u32, u64> = HashMap::new();
+        for seed in 0..trials {
+            let v = *hasher.hash(key, seed);
+            *counts.entry(v).or_default() += 1;
+        }
+
+        assert_eq!(
+            counts.len(),
+            probabilities.len(),
+            "not every value was ever sampled: {counts:?}"
+        );
+
+        for (&&value, &expected_p) in &probabilities {
+            let observed = counts.get(&value).copied().unwrap_or(0) as f64 / trials as f64;
+            // Standard error of a binomial proportion estimate; a generous
+            // margin so this doesn't flake while still catching real bugs.
+            let stderr = (expected_p * (1.0 - expected_p) / trials as f64).sqrt();
+            let tolerance = 6.0 * stderr;
+            assert!(
+                (observed - expected_p).abs() < tolerance,
+                "value {value}: expected p≈{expected_p}, observed {observed} (tolerance {tolerance})"
+            );
+        }
+    }
+}

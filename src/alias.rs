@@ -123,7 +123,7 @@ impl<V> AliasTable<V> {
         let remainder = product as u64;
         let entry = &self.table[index];
 
-        &entry.value_and_alias[(remainder <= entry.threshold) as usize]
+        &entry.value_and_alias[(remainder > entry.threshold) as usize]
     }
 }
 
