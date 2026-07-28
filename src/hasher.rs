@@ -3,7 +3,7 @@ use std::{
     collections::HashMap,
     hash::{BuildHasher, Hash, Hasher},
     marker::PhantomData,
-    mem::{size_of, size_of_val},
+    mem::size_of_val,
 };
 
 pub type Seed = u64;
@@ -20,7 +20,7 @@ impl<K: Hash, V: Clone + Hash + Eq, H: BuildHasher> RetrievalHasher<K, V, H> {
         probabilities: &HashMap<&V, f64>,
         hash_builder: H,
     ) -> Result<Self, AliasTableError<V>> {
-        let alias_table = AliasTable::from(probabilities)?;
+        let alias_table = AliasTable::new(probabilities)?;
         Ok(Self {
             _p: PhantomData,
             alias_table,
@@ -73,11 +73,12 @@ impl<K: Hash, V: Clone + Hash + Eq, H: BuildHasher> RetrievalHasher<K, V, H> {
 
     /// Total space (stack + heap) this structure occupies, in bytes.
     pub fn space_in_bytes(&self) -> usize {
-        // `size_of::<Self>()` already covers `alias_table`'s own shallow
-        // (stack) footprint (plus `build_hasher` and the zero-sized
-        // `PhantomData`); add only its heap contents on top.
-        size_of::<Self>()
-            + (self.alias_table.space_in_bytes() - size_of_val(&self.alias_table))
+        let RetrievalHasher {
+            _p: _,
+            alias_table,
+            build_hasher,
+        } = self;
+        alias_table.space_in_bytes() + size_of_val(build_hasher)
     }
 }
 

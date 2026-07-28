@@ -2,7 +2,6 @@ use std::{
     collections::HashMap,
     fmt::Debug,
     hash::{BuildHasher, Hash},
-    mem::{size_of, size_of_val},
 };
 
 use crate::{
@@ -55,12 +54,21 @@ impl<K: Hash, V: Clone + Hash + Eq + Debug, H: BuildHasher> ConsensusRetrieval<K
 
     /// Total space (stack + heap) this data structure occupies, in bytes.
     pub fn space_in_bytes(&self) -> usize {
-        // `size_of::<Self>()` already covers each field's own shallow
-        // (stack) footprint; add only their heap contents on top.
-        size_of::<Self>()
-            + (self.insertion_vec.space_in_bytes() - size_of_val(&self.insertion_vec))
-            + (self.consensus_vector.space_in_bytes() - size_of_val(&self.consensus_vector))
-            + (self.hasher.space_in_bytes() - size_of_val(&self.hasher))
+        let ConsensusRetrieval {
+            insertion_vec,
+            consensus_vector,
+            hasher,
+        } = self;
+        insertion_vec.space_in_bytes() + consensus_vector.space_in_bytes() + hasher.space_in_bytes()
+    }
+
+    // Number of bits of part that scales with input size.
+    pub fn variable_part_bit_size(&self) -> usize {
+        self.insertion_vec.variable_part_bit_size() + self.consensus_vector.variable_part_bit_size()
+    }
+
+    pub fn num_tasks(&self) -> usize {
+        self.insertion_vec.total_num_tasks()
     }
 
     pub fn hash_evaluations(&self) -> u64 {

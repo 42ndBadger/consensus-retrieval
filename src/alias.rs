@@ -33,7 +33,7 @@ impl<V: Clone + Hash + Eq> AliasTable<V> {
     /// Builds an [`AliasTable`] from a [`HashMap`] of values and their weights.
     /// Adapted from Algorthim 2 of "Parallel Weighted Random Sampling" by Hübschle-Schneider und Sanders
     /// http://arxiv.org/abs/1903.00227
-    pub fn from(values_with_weights: &HashMap<&V, f64>) -> Result<Self, AliasTableError<V>> {
+    pub fn new(values_with_weights: &HashMap<&V, f64>) -> Result<Self, AliasTableError<V>> {
         let n = values_with_weights.len();
         if n == 0 {
             return Err(AliasTableError::EmptyInput);
@@ -137,7 +137,7 @@ mod tests {
     fn test_uniform_alias_table() {
         let uniform_distribution =
             HashMap::from([(&1, 0.25f64), (&2, 0.25f64), (&3, 0.25f64), (&4, 0.25f64)]);
-        let table = AliasTable::from(&uniform_distribution).unwrap();
+        let table = AliasTable::new(&uniform_distribution).unwrap();
         for i in 0..100u64 {
             let r = (u64::MAX / 100) * i;
             let sample = table.sample(r);
@@ -149,7 +149,7 @@ mod tests {
     fn test_uniform_alias_table_matches() {
         let uniform_distribution =
             HashMap::from([(&1, 0.25f64), (&2, 0.25f64), (&3, 0.25f64), (&4, 0.25f64)]);
-        let table = AliasTable::from(&uniform_distribution).unwrap();
+        let table = AliasTable::new(&uniform_distribution).unwrap();
         assert!(alias_table_matches(&table, &uniform_distribution));
     }
 
@@ -157,7 +157,7 @@ mod tests {
     fn test_non_uniform_alias_table_matches() {
         let non_uniform_distribution =
             HashMap::from([(&1, 0.1f64), (&2, 0.2f64), (&3, 0.3f64), (&4, 0.4f64)]);
-        let table = AliasTable::from(&non_uniform_distribution).unwrap();
+        let table = AliasTable::new(&non_uniform_distribution).unwrap();
         assert!(alias_table_matches(&table, &non_uniform_distribution));
     }
 

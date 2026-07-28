@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     fmt::Debug,
     hash::{BuildHasher, Hash},
-    mem::{size_of, size_of_val},
+    mem::size_of_val,
 };
 
 use indicatif::ProgressBar;
@@ -107,7 +107,15 @@ impl ConsensusVector {
 
     /// Total space (stack + heap) this structure occupies, in bytes.
     pub fn space_in_bytes(&self) -> usize {
-        size_of::<Self>() + (self.bitvec.mem_size(SizeFlags::default()) - size_of_val(&self.bitvec))
+        let ConsensusVector {
+            bitvec,
+            hash_evaluations,
+        } = self;
+        bitvec.mem_size(SizeFlags::default()) + size_of_val(hash_evaluations)
+    }
+
+    pub fn variable_part_bit_size(&self) -> usize {
+        self.bitvec.len()
     }
 }
 
