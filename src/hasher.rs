@@ -1,6 +1,7 @@
 use crate::alias::{AliasTable, AliasTableError};
 use std::{
     collections::HashMap,
+    fmt::Debug,
     hash::{BuildHasher, Hash, Hasher},
     marker::PhantomData,
     mem::size_of_val,
@@ -15,12 +16,13 @@ pub struct RetrievalHasher<K: Hash, V: Clone + Hash + Eq, H: BuildHasher> {
     build_hasher: H,
 }
 
-impl<K: Hash, V: Clone + Hash + Eq, H: BuildHasher> RetrievalHasher<K, V, H> {
+impl<K: Hash, V: Clone + Hash + Eq + Debug, H: BuildHasher> RetrievalHasher<K, V, H> {
     pub fn new_with_hasher(
         probabilities: &HashMap<&V, f64>,
         hash_builder: H,
     ) -> Result<Self, AliasTableError<V>> {
         let alias_table = AliasTable::new(probabilities)?;
+        dbg!(&alias_table);
         Ok(Self {
             _p: PhantomData,
             alias_table,

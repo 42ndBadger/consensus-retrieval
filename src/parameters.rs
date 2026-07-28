@@ -11,14 +11,21 @@ impl Parameters {
     pub fn new_like_in_proof(b: usize) -> Self {
         assert!(b > 0, "b must be positive");
         let ε = 1. / (b as f64 + 1.); // todo how to ensure < 1?
-        let β = f64::ceil((b as f64).sqrt() * (b as f64).log2()) as usize + 1; // todo how ensure > 0?
+        Self::new_from_raw(b, -ε.log2(), 1.)
+    }
+
+    pub fn new_from_raw(b: usize, ε: f64, beta_scale: f64) -> Self {
+        assert!(b > 0, "b must be positive: b={b}");
+        assert!(ε > 0. && ε < 1., "ε must be strictly in 0..1: ε={ε}");
+
+        let β = (f64::ceil(beta_scale * (b as f64).sqrt() * (b as f64).log2()) as usize).max(1);
         let avg_group_load = (b as f64 + β as f64 / 2.) * (1. - ε);
         Self {
             avg_group_load,
             inital_group_width: b,
             insertion_increment: β,
             max_difficulty_of_task: -ε.log2() + 3. * β as f64,
-            max_difficulty_at_group_border: -ε.log2() + 2. * β as f64
+            max_difficulty_at_group_border: -ε.log2() + 2. * β as f64,
         }
     }
 }

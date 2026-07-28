@@ -1,6 +1,8 @@
+use indicatif::ProgressIterator;
 use mem_dbg::{MemSize, SizeFlags};
 use std::{
     collections::HashMap,
+    fmt::Debug,
     hash::{BuildHasher, Hash},
     mem::size_of_val,
 };
@@ -25,7 +27,7 @@ pub struct GroupBounds {
 }
 
 impl InsertionVec {
-    pub fn new<K: Hash, V: Clone + Eq + Hash>(
+    pub fn new<K: Hash, V: Clone + Eq + Hash + Debug>(
         kv: &HashMap<HashCode, V>,
         probabilities: &Probabilities<V>,
         parms: Parameters,
@@ -47,10 +49,13 @@ impl InsertionVec {
             kv_per_group[group].push((key, value));
         }
 
+        let max_keys_per_group: usize = kv_per_group.iter().map(Vec::len).max().unwrap();
+        println!("max key per group {}", max_keys_per_group);
+
         // l_right = -log2(q_right); boundary q_right = 1 (vacuous success) => l = 0
         let mut l_right = 0f64;
         let mut num_insertions_per_group = vec![0usize; num_groups];
-        for (group, group_kv) in kv_per_group.iter().enumerate().rev() {
+        for (group, group_kv) in kv_per_group.iter().enumerate().rev().progress() {
             for num_insertions in 0.. {
                 let mut good_event = true;
                 let num_tasks = b + parms.insertion_increment * num_insertions;
@@ -100,6 +105,7 @@ impl InsertionVec {
             }
             bits.push(false);
         }
+        println!("insertion {bits}");
         let select = SelectZeroAdapt::new(Rank9::new(bits));
 
         Self {

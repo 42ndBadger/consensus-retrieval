@@ -7,7 +7,10 @@ use std::{
 
 use indicatif::ProgressBar;
 use mem_dbg::{MemSize, SizeFlags};
-use sux::{bits::BitVec, traits::BitVecValueOps};
+use sux::{
+    bits::BitVec,
+    traits::{BitCount, BitVecValueOps},
+};
 
 use crate::{
     hasher::{HashCode, RetrievalHasher, Seed},
@@ -26,6 +29,10 @@ impl ConsensusVector {
         hasher: &RetrievalHasher<K, V, impl BuildHasher>,
     ) -> Self {
         let tasks = get_consensus_tasks(kv, insertion_vec, hasher);
+
+        let max_keys_per_task = tasks.iter().map(Vec::len).max().unwrap();
+        println!("max keys per task: {max_keys_per_task}");
+
         let progress = ProgressBar::new(tasks.len() as u64);
         let mut iterations = 0;
         let mut hash_evaluations: u64 = 0;
@@ -36,6 +43,9 @@ impl ConsensusVector {
         let mut current: Seed = 0;
 
         println!("num_tasks {}", tasks.len());
+
+        let mut max_task = 0;
+        let mut tries_for_max_task = 0;
 
         while consensus_vec.len() < tasks.len() {
             let task = consensus_vec.len();
@@ -84,6 +94,10 @@ impl ConsensusVector {
         consensus_vec.append_value(current.reverse_bits(), Seed::BITS as usize - 1);
         assert_eq!(consensus_vec.len(), tasks.len() + Seed::BITS as usize - 1);
         println!("{consensus_vec}");
+        println!(
+            "ratio of ones: {}",
+            consensus_vec.count_ones() as f32 / consensus_vec.len() as f32
+        );
         Self {
             bitvec: consensus_vec,
             hash_evaluations,
@@ -117,9 +131,13 @@ impl ConsensusVector {
     pub fn variable_part_bit_size(&self) -> usize {
         self.bitvec.len()
     }
+
+    pub fn get_ratio_one_bits(&self) -> f32 {
+        self.bitvec.count_ones() as f32 / self.bitvec.len() as f32
+    }
 }
 
-fn get_consensus_tasks<'a, K: Hash, V: Clone + Hash + Eq>(
+fn get_consensus_tasks<'a, K: Hash, V: Clone + Hash + Eq + Debug>(
     kv: &'a HashMap<HashCode, V>,
     insertion_vec: &InsertionVec,
     hasher: &RetrievalHasher<K, V, impl BuildHasher>,

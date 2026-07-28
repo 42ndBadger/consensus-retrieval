@@ -12,15 +12,17 @@ use crate::{
 
 mod alias;
 mod consensus;
+pub mod data_gen;
 mod hasher;
 mod insertion_vec;
-mod parameters;
-pub mod data_gen;
+pub mod parameters;
 
 pub struct ConsensusRetrieval<K: Hash, V: Clone + Hash + Eq, H: BuildHasher = ahash::RandomState> {
     insertion_vec: insertion_vec::InsertionVec,
     consensus_vector: consensus::ConsensusVector,
     hasher: hasher::RetrievalHasher<K, V, H>,
+    entropy_per_key: f64,
+    num_keys: usize,
 }
 
 type Probabilities<'a, V> = HashMap<&'a V, f64>;
@@ -33,6 +35,10 @@ impl<K: Hash, V: Clone + Hash + Eq + Debug> ConsensusRetrieval<K, V> {
 
 impl<K: Hash, V: Clone + Hash + Eq + Debug, H: BuildHasher> ConsensusRetrieval<K, V, H> {
     pub fn new_with_hasher(kv: &HashMap<K, V>, b: usize, hasher_bulder: H) -> Self {
+        Self::new_with_parameters(kv, Parameters::new_like_in_proof(b), hasher_bulder)
+    }
+
+    pub fn new_with_parameters(kv: &HashMap<K, V>, params: Parameters, hasher_bulder: H) -> Self {
         if kv.is_empty() {
             panic!("empty input")
         }
@@ -40,15 +46,17 @@ impl<K: Hash, V: Clone + Hash + Eq + Debug, H: BuildHasher> ConsensusRetrieval<K
         let hasher = RetrievalHasher::new_with_hasher(&frequencies, hasher_bulder).unwrap();
         let kv: HashMap<HashCode, V> = hasher.convert_to_hash_codes(kv).expect("not duplicates");
 
-        let parameters = Parameters::new_like_in_proof(b);
-        dbg!(&parameters);
-        let insertion = InsertionVec::new(&kv, &frequencies, parameters, &hasher);
+        dbg!(&params);
+        let insertion = InsertionVec::new(&kv, &frequencies, params, &hasher);
         let consensus = consensus::ConsensusVector::new(&kv, &insertion, &hasher);
 
+        let entropy_per_key: f64 = frequencies.values().map(|p| -p * p.log2()).sum();
         Self {
             insertion_vec: insertion,
             consensus_vector: consensus,
             hasher,
+            entropy_per_key,
+            num_keys: kv.iter().len(),
         }
     }
 
@@ -58,8 +66,14 @@ impl<K: Hash, V: Clone + Hash + Eq + Debug, H: BuildHasher> ConsensusRetrieval<K
             insertion_vec,
             consensus_vector,
             hasher,
+            entropy_per_key,
+            num_keys,
         } = self;
-        insertion_vec.space_in_bytes() + consensus_vector.space_in_bytes() + hasher.space_in_bytes()
+        insertion_vec.space_in_bytes()
+            + consensus_vector.space_in_bytes()
+            + hasher.space_in_bytes()
+            + size_of_val(entropy_per_key)
+            + size_of_val(num_keys)
     }
 
     // Number of bits of part that scales with input size.
@@ -73,6 +87,10 @@ impl<K: Hash, V: Clone + Hash + Eq + Debug, H: BuildHasher> ConsensusRetrieval<K
 
     pub fn hash_evaluations(&self) -> u64 {
         self.consensus_vector.hash_evaluations()
+    }
+
+    pub fn space_overhead(&self) -> f64 {
+        self.variable_part_bit_size() as f64 / self.num_keys as f64 - self.entropy_per_key
     }
 
     pub fn query(&self, key: &K) -> V {
