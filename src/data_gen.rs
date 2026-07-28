@@ -1,6 +1,6 @@
 use std::collections::HashMap;
-use std::hash::{Hash};
 use std::fmt::Debug;
+use std::hash::Hash;
 
 use ahash::RandomState;
 
@@ -13,16 +13,16 @@ where
     let hasher = RandomState::new();
     let mut result = HashMap::new();
 
-    let alias_table = AliasTable::from(distibution).unwrap();
+    let alias_table = AliasTable::new(distibution).unwrap();
     for i in 0..n {
         let mut key = hasher.hash_one(i);
         let mut j = 0;
         while result.contains_key(&key) {
-            key = hasher.hash_one(i + n*j);
+            key = hasher.hash_one(i + n * j);
             j += 1;
         }
         let r = hasher.hash_one(key);
         result.insert(key, *alias_table.sample(r));
     }
-  result  
+    result
 }
