@@ -27,7 +27,7 @@ impl<K: Hash, V: Clone + Hash + Eq, H: BuildHasher> RetrievalHasher<K, V, H> {
             build_hasher: hash_builder,
         })
     }
-    
+
     /// Hashes `value` within its own `tag` domain, so that the different
     /// `hash_to_*`/`hash` methods never collide with each other just because
     /// they were called with the same underlying `key`.
@@ -49,9 +49,9 @@ impl<K: Hash, V: Clone + Hash + Eq, H: BuildHasher> RetrievalHasher<K, V, H> {
         fast_range(self.hash64(1, (key, num_tasks)), num_tasks)
     }
 
-    pub fn hash(&self, key: HashCode, seed: Seed) -> V {
+    pub fn hash(&self, key: HashCode, seed: Seed) -> &V {
         let h = self.hash64(2, (key, seed));
-        self.alias_table.sample(h).clone()
+        self.alias_table.sample(h)
     }
 
     pub fn hash_to_hash_code(&self, key: &K) -> HashCode {

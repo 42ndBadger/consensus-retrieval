@@ -168,7 +168,10 @@ mod tests {
         let prob_of_entry = 1. / alias_table.table.len() as f64;
         for entry in &alias_table.table {
             let ratio = entry.threshold as f64 / u64::MAX as f64;
-            println!("entry: {entry:?} p: {}", ratio / alias_table.table.len() as f64);
+            println!(
+                "entry: {entry:?} p: {}",
+                ratio / alias_table.table.len() as f64
+            );
             let p = ratio * prob_of_entry;
             result
                 .entry(&entry.value_and_alias[0])

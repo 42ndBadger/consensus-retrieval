@@ -75,7 +75,7 @@ impl<K: Hash, V: Clone + Hash + Eq + Debug, H: BuildHasher> ConsensusRetrieval<K
         let in_group_offset = self.hasher.hash_to_task(key, group_bounds.width);
         let consensus_idx = group_bounds.start + in_group_offset;
         let seed = self.consensus_vector.get_seed_at_task(consensus_idx);
-        self.hasher.hash(key, seed)
+        self.hasher.hash(key, seed).clone()
     }
 }
 
