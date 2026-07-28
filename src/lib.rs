@@ -16,6 +16,7 @@ mod consensus;
 mod hasher;
 mod insertion_vec;
 mod parameters;
+pub mod data_gen;
 
 pub struct ConsensusRetrieval<K: Hash, V: Clone + Hash + Eq, H: BuildHasher = ahash::RandomState> {
     insertion_vec: insertion_vec::InsertionVec,
