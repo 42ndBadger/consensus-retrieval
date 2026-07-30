@@ -81,6 +81,18 @@ impl<K: Hash, V: Clone + Hash + Eq + Debug, H: BuildHasher> ConsensusRetrieval<K
         self.insertion_vec.variable_part_bit_size() + self.consensus_vector.variable_part_bit_size()
     }
 
+    /// Bits used by the insertion vector (the unary-coded insertion counts
+    /// plus its rank/select index), one component of `variable_part_bit_size`.
+    pub fn insertion_vec_bit_size(&self) -> usize {
+        self.insertion_vec.variable_part_bit_size()
+    }
+
+    /// Bits used by the consensus vector, the other component of
+    /// `variable_part_bit_size`.
+    pub fn consensus_vec_bit_size(&self) -> usize {
+        self.consensus_vector.variable_part_bit_size()
+    }
+
     pub fn num_tasks(&self) -> usize {
         self.insertion_vec.total_num_tasks()
     }
