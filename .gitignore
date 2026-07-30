@@ -2,3 +2,5 @@
 perf*
 profile.
 flamegraph.svg
+.direnv
+*.data
