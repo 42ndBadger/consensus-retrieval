@@ -14,12 +14,20 @@ parameters' values. This is combinatorial (product of the list lengths), so
 keep the lists short; it plots every combination's space/time tradeoff
 instead of one line per parameter.
 
+Pass --b-curve to instead sweep --b once per --beta-scale value (solid
+lines) and once per --eps-scale value (dashed lines), plotting each as its
+own curve -- useful for seeing how the space/time tradeoff across b shifts
+as beta_scale or eps_scale changes.
+
 Usage:
     python3 scripts/tune_parameters.py --file path/to/kv.txt \
         --b 2 4 8 16 32 --beta-scale 0.5 1 2 --eps-scale 0.5 1 2
 
     python3 scripts/tune_parameters.py --file path/to/kv.txt --grid \
         --b 8 32 --beta-scale 0.5 1 --eps-scale 0.5 1
+
+    python3 scripts/tune_parameters.py --file path/to/kv.txt --b-curve \
+        --b 2 4 8 16 32 --beta-scale 0.5 1 2 --eps-scale 0.5 1 2
 
 Rebuild the binary in release mode first for realistic timings:
     cargo build --release --bin cli
@@ -237,6 +245,134 @@ def plot_tradeoff(
     return best
 
 
+def plot_b_curve(combined: pd.DataFrame, title: str, out_path: Path):
+    """One curve per (curve_type, curve_value): curve_type is "beta_scale"
+    or "eps_scale" (solid vs dashed line), curve_value is the held value of
+    whichever of those two wasn't varied. Each curve's points are its `b`
+    sweep, colored distinctly and labeled in the legend; the smallest `b`
+    on a curve is marked with a down-triangle, the largest with an
+    up-triangle."""
+    fig, ax = plt.subplots(figsize=(10, 7))
+
+    curve_keys = sorted(
+        combined.groupby(["curve_type", "curve_value"]).groups.keys(),
+        key=lambda k: (k[0], k[1]),
+    )
+    cmap = plt.get_cmap("tab10")
+    for i, (curve_type, curve_value) in enumerate(curve_keys):
+        subset = combined[
+            (combined["curve_type"] == curve_type) & (combined["curve_value"] == curve_value)
+        ].sort_values("b")
+        color = cmap(i % 10)
+        linestyle = "-" if curve_type == "beta_scale" else "--"
+        ax.plot(
+            subset["hash_evaluations"],
+            subset["space_overhead"],
+            color=color,
+            linestyle=linestyle,
+            marker=".",
+            alpha=0.85,
+            label=f"{curve_type}={curve_value:g}",
+        )
+
+        min_row = subset.loc[subset["b"].idxmin()]
+        max_row = subset.loc[subset["b"].idxmax()]
+        ax.scatter(min_row["hash_evaluations"], min_row["space_overhead"], color=color, marker="v", s=110, zorder=4)
+        ax.scatter(max_row["hash_evaluations"], max_row["space_overhead"], color=color, marker="^", s=110, zorder=4)
+
+    curve_legend = ax.legend(
+        title="curve (solid=beta_scale, dashed=eps_scale)", loc="upper right", fontsize=8
+    )
+    ax.add_artist(curve_legend)
+
+    best = combined.loc[combined["space_overhead"].idxmin()]
+    ax.scatter([best["hash_evaluations"]], [best["space_overhead"]], color="red", marker="*", s=250, zorder=5)
+
+    marker_handles = [
+        Line2D([], [], color="red", marker="*", linestyle="", markersize=13, label="best overhead"),
+        Line2D([], [], color="black", marker="v", linestyle="", label="smallest b"),
+        Line2D([], [], color="black", marker="^", linestyle="", label="largest b"),
+    ]
+    ax.legend(handles=marker_handles, loc="lower left")
+
+    ax.set_xscale("log")
+    ax.set_xlabel("hash evaluations")
+    ax.set_ylabel("space overhead (bits/key)")
+    ax.grid(True, alpha=0.3)
+    ax.set_title(f"{title}\nsmallest overhead: {best['space_overhead']:.4f} bits/key")
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=150)
+    print(f"wrote {out_path}")
+    return best
+
+
+def run_b_curve(args):
+    baseline_beta_scale = args.beta_scale[len(args.beta_scale) // 2]
+    baseline_eps_scale = args.eps_scale[len(args.eps_scale) // 2]
+    total_runs = len(args.b) * (len(args.beta_scale) + len(args.eps_scale))
+    print(
+        f"b-curve sweep: {len(args.beta_scale)} beta_scale curves + "
+        f"{len(args.eps_scale)} eps_scale curves, {len(args.b)} b values each "
+        f"({total_runs} runs total)"
+    )
+
+    frames = []
+    total_timed_out = 0
+    for beta_scale in args.beta_scale:
+        print(f"-- curve beta_scale={beta_scale} --")
+        df, timed_out = sweep(
+            args.bin,
+            args.file,
+            "b",
+            args.b,
+            {"beta_scale": beta_scale, "eps_scale": baseline_eps_scale},
+            args.timeout,
+        )
+        total_timed_out += len(timed_out)
+        if not df.empty:
+            frames.append(df.assign(curve_type="beta_scale", curve_value=beta_scale))
+
+    for eps_scale in args.eps_scale:
+        print(f"-- curve eps_scale={eps_scale} --")
+        df, timed_out = sweep(
+            args.bin,
+            args.file,
+            "b",
+            args.b,
+            {"beta_scale": baseline_beta_scale, "eps_scale": eps_scale},
+            args.timeout,
+        )
+        total_timed_out += len(timed_out)
+        if not df.empty:
+            frames.append(df.assign(curve_type="eps_scale", curve_value=eps_scale))
+
+    combined = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    combined.to_csv(args.csv_out, index=False)
+    print(f"wrote {args.csv_out}")
+
+    completed = len(combined)
+    total = completed + total_timed_out
+    print(f"{completed}/{total} runs completed, {total_timed_out} timed out")
+
+    if combined.empty:
+        print("no successful runs; nothing to plot", file=sys.stderr)
+        return
+
+    best = plot_b_curve(
+        combined,
+        title=(
+            f"b-curve sweep against {args.file}\n"
+            f"baseline: beta_scale={baseline_beta_scale}, eps_scale={baseline_eps_scale}\n"
+            f"{completed}/{total} runs completed, {total_timed_out} timed out"
+        ),
+        out_path=args.plot_out,
+    )
+    print(
+        f"best space overhead: {best['space_overhead']:.4f} bits/key at "
+        f"b={best['b']:.0f} {best['curve_type']}={best['curve_value']}"
+    )
+
+
 def run_grid(args):
     df, timed_out = grid_sweep(
         args.bin, args.file, args.b, args.beta_scale, args.eps_scale, args.timeout
@@ -311,6 +447,16 @@ def main():
             "the list lengths, so use short lists"
         ),
     )
+    parser.add_argument(
+        "--b-curve",
+        dest="b_curve",
+        action="store_true",
+        help=(
+            "for every --beta-scale and --eps-scale value, sweep --b and "
+            "plot it as its own curve (solid line per beta_scale value, "
+            "dashed per eps_scale value), instead of one-at-a-time"
+        ),
+    )
     parser.add_argument("--csv-out", type=Path, default=Path("tuning_results.csv"))
     parser.add_argument("--plot-out", type=Path, default=Path("tuning_results.png"))
     args = parser.parse_args()
@@ -323,12 +469,19 @@ def main():
     if not args.file.exists():
         sys.exit(f"file not found: {args.file}")
 
+    if args.grid and args.b_curve:
+        sys.exit("--grid and --b-curve are mutually exclusive")
+
     args.b.sort()
     args.beta_scale.sort()
     args.eps_scale.sort()
 
     if args.grid:
         run_grid(args)
+        return
+
+    if args.b_curve:
+        run_b_curve(args)
         return
 
     baseline = {
