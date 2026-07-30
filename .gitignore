@@ -4,3 +4,4 @@ profile.
 flamegraph.svg
 .direnv
 *.data
+tuning_results.*
