@@ -9,13 +9,25 @@ fn main() {
     let mut rng = StdRng::seed_from_u64(42);
     let kv = (0..n).map(|k| (k, rng.random_range(0..sigma))).collect();
 
-    let b = 10;
+    let b = 40;
     let params = Parameters::new_from_raw(b, 1. / b as f64, 0.1);
     // let params = Parameters::new_like_in_proof(b);
 
     let retrieval =
         ConsensusRetrieval::new_with_parameters(&kv, params, ahash::RandomState::with_seed(11));
     println!("overhead {}", retrieval.space_overhead());
+    println!(
+        "consensus size {}",
+        human_bytes::human_bytes(retrieval.consensus_vec_bit_size() as f64 / 8.)
+    );
+    println!(
+        "insertion size {}",
+        human_bytes::human_bytes(retrieval.insertion_vec_bit_size() as f64 / 8.)
+    );
+    println!(
+        "space usage {}",
+        human_bytes::human_bytes(retrieval.space_in_bytes() as f64)
+    );
     println!("evals {}", retrieval.hash_evaluations());
 
     for (k, v) in kv.iter() {

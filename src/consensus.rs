@@ -93,7 +93,7 @@ impl ConsensusVector {
         // fore some stupid reason, bits get added from right to left...
         consensus_vec.append_value(current.reverse_bits(), Seed::BITS as usize - 1);
         assert_eq!(consensus_vec.len(), tasks.len() + Seed::BITS as usize - 1);
-        println!("{consensus_vec}");
+        // println!("{consensus_vec}");
         println!(
             "ratio of ones: {}",
             consensus_vec.count_ones() as f32 / consensus_vec.len() as f32

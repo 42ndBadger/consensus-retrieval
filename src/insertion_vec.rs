@@ -105,7 +105,7 @@ impl InsertionVec {
             }
             bits.push(false);
         }
-        println!("insertion {bits}");
+        // println!("insertion {bits}");
         let select = SelectZeroAdapt::new(Rank9::new(bits));
 
         Self {
