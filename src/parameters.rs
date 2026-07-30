@@ -39,4 +39,9 @@ impl Parameters {
            max_difficulty_at_group_border: max_diff,
        } 
     }
+
+    pub fn new_with_scales(b: usize, beta_scale: f64, eps_scale: f64) -> Self {
+        let ε = eps_scale * 1. / (b as f64 + 1.);
+        Self::new_from_raw(b, ε, beta_scale)
+    }
 }

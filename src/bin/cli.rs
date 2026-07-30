@@ -18,11 +18,9 @@ struct Cli {
     #[arg(short, required_unless_present = "output")]
     b: Option<usize>,
     #[arg(long, required_unless_present = "output")]
-    eps: Option<f64>,
-    #[arg(long, required_unless_present = "output")]
     beta_scale: Option<f64>,
     #[arg(long, required_unless_present = "output")]
-    max_diff: Option<f64>,
+    eps_scale: Option<f64>,
 
     /// Read `key value` pairs directly from a file (one pair per line,
     /// separated by a space), instead of generating them from a
@@ -180,7 +178,7 @@ fn main() {
 
     match Input::from_cli(cli.file, cli.distribution) {
         Input::File(path) => {
-            let params = build_params(cli.b, cli.eps, cli.beta_scale, cli.max_diff);
+            let params = build_params(cli.b, cli.beta_scale, cli.eps_scale);
             build_and_report(&read_kv_file(&path), params);
         }
         Input::Distribution(distribution) => {
@@ -194,26 +192,20 @@ fn main() {
                 write_kv_file(path, &kv);
                 return;
             }
-            let params = build_params(cli.b, cli.eps, cli.beta_scale, cli.max_diff);
+            let params = build_params(cli.b, cli.beta_scale, cli.eps_scale);
             build_and_report(&kv, params);
         }
     }
 }
 
-/// Unwraps the four "only needed when actually building" args. clap
+/// Unwraps the three "only needed when actually building" args. clap
 /// guarantees these are `Some` whenever this is reached, via
 /// `required_unless_present = "output"` on each of them.
-fn build_params(
-    b: Option<usize>,
-    eps: Option<f64>,
-    beta_scale: Option<f64>,
-    max_diff: Option<f64>,
-) -> Parameters {
-    Parameters::new_from_raw_difficulty(
+fn build_params(b: Option<usize>, beta_scale: Option<f64>, eps_scale: Option<f64>) -> Parameters {
+    Parameters::new_with_scales(
         b.expect("clap guarantees -b is set when building"),
-        eps.expect("clap guarantees --eps is set when building"),
         beta_scale.expect("clap guarantees --beta-scale is set when building"),
-        max_diff.expect("clap guarantees --max-diff is set when building"),
+        eps_scale.expect("clap guarantees --eps-scale is set when building"),
     )
 }
 
