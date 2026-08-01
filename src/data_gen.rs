@@ -6,6 +6,9 @@ use ahash::RandomState;
 
 use crate::alias::AliasTable;
 
+use rand;
+use rand_distr::Distribution;
+
 pub fn from_value_distribution<V>(n: usize, distibution: &HashMap<&V, f64>) -> HashMap<u64, V>
 where
     V: Copy + Eq + Hash + Debug,
@@ -22,6 +25,17 @@ where
         .collect()
 }
 
+pub fn from_distribution<V, D>(n: usize, distribution: D) -> HashMap<u64, V>
+where
+    V: Copy + Eq + Hash + Debug,
+    D: Distribution<V>,
+{
+    unique_keys_u64(n, &RandomState::new())
+        .into_iter()
+        .zip(distribution.sample_iter(rand::rng()))
+        .collect()
+}
+
 pub fn unique_keys_u64(n: usize, hasher: &RandomState) -> Vec<u64> {
     let mut result: HashSet<u64> = HashSet::new();
 
@@ -32,7 +46,6 @@ pub fn unique_keys_u64(n: usize, hasher: &RandomState) -> Vec<u64> {
             key = hasher.hash_one(i + n * j);
             j += 1;
         }
-        let r = hasher.hash_one(key);
         result.insert(key);
     }
     result.into_iter().collect()

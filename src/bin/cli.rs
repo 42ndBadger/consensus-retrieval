@@ -4,7 +4,7 @@ use std::fs;
 use std::hash::Hash;
 
 use clap::Parser;
-use statrs::distribution::{Binomial, Discrete};
+use rand_distr::Distribution as _;
 
 use consensus_retrieval::{data_gen, parameters::Parameters};
 
@@ -34,8 +34,10 @@ struct Cli {
 
     /// Distribution to draw values from, followed by its parameters:
     /// `--distribution uniform <count>`,
-    /// `--distribution multinomial <weight>...`, or
-    /// `--distribution binomial <trials> <p>`
+    /// `--distribution multinomial <weight>...`,
+    /// `--distribution binomial <trials> <p>`,
+    /// `--distribution zipf <n> <s>`, or
+    /// `--distribution geometric <p>`
     #[arg(
         long,
         short,
@@ -93,7 +95,7 @@ fn read_kv_file(path: &str) -> HashMap<String, u64> {
 
 /// Writes `key value` pairs, one per line, in the same format `read_kv_file`
 /// reads, so generated data can be saved and reloaded via `--file` later.
-fn write_kv_file(path: &str, kv: &HashMap<u64, usize>) {
+fn write_kv_file(path: &str, kv: &HashMap<u64, u64>) {
     let mut contents = String::with_capacity(kv.len() * 8);
     for (key, value) in kv {
         contents.push_str(&key.to_string());
@@ -109,6 +111,8 @@ enum Distribution {
     Uniform { count: usize },
     Multinomial { weights: Vec<f64> },
     Binomial { trials: u64, p: f64 },
+    Zipf { n: f64, s: f64 },
+    Geometric { p: f64 },
 }
 
 impl Distribution {
@@ -145,25 +149,65 @@ impl Distribution {
                 let p: f64 = p.parse().unwrap_or_else(|_| panic!("invalid p {p:?}"));
                 Distribution::Binomial { trials, p }
             }
+            "zipf" => {
+                let [n, s] = rest else {
+                    panic!("zipf needs exactly two parameters: <n> <s>");
+                };
+                let n: f64 = n.parse().unwrap_or_else(|_| panic!("invalid n {n:?}"));
+                let s: f64 = s.parse().unwrap_or_else(|_| panic!("invalid s {s:?}"));
+                Distribution::Zipf { n, s }
+            }
+            "geometric" => {
+                let [p] = rest else {
+                    panic!("geometric needs exactly one parameter: <p>");
+                };
+                let p: f64 = p.parse().unwrap_or_else(|_| panic!("invalid p {p:?}"));
+                Distribution::Geometric { p }
+            }
             other => panic!(
-                "unknown distribution {other:?}, expected `uniform`, `multinomial`, or `binomial`"
+                "unknown distribution {other:?}, expected `uniform`, `multinomial`, \
+                 `binomial`, `zipf`, or `geometric`"
             ),
         }
     }
 
-    fn into_weights(self) -> HashMap<usize, f64> {
+    /// Generates `n` (key, value) pairs by sampling values from this
+    /// distribution. `uniform`/`multinomial` build an explicit weight table
+    /// and go through our own alias-table sampling; the others are true
+    /// probability distributions from `rand_distr`, sampled directly via a
+    /// real RNG through `data_gen::from_distribution`.
+    fn generate(self, n: usize) -> HashMap<u64, u64> {
         match self {
             Distribution::Uniform { count } => {
                 let weight = 1.0 / count as f64;
-                (0..count).map(|i| (i, weight)).collect()
+                let weights: HashMap<u64, f64> = (0..count as u64).map(|i| (i, weight)).collect();
+                let dist: HashMap<&u64, f64> = weights.iter().map(|(k, v)| (k, *v)).collect();
+                data_gen::from_value_distribution(n, &dist)
             }
-            Distribution::Multinomial { weights } => weights.into_iter().enumerate().collect(),
+            Distribution::Multinomial { weights } => {
+                let weights: HashMap<u64, f64> = weights
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, w)| (i as u64, w))
+                    .collect();
+                let dist: HashMap<&u64, f64> = weights.iter().map(|(k, v)| (k, *v)).collect();
+                data_gen::from_value_distribution(n, &dist)
+            }
             Distribution::Binomial { trials, p } => {
-                let binomial = Binomial::new(p, trials)
+                let binomial = rand_distr::Binomial::new(trials, p)
                     .unwrap_or_else(|e| panic!("invalid binomial distribution: {e}"));
-                (0..=trials)
-                    .map(|k| (k as usize, binomial.pmf(k)))
-                    .collect()
+                data_gen::from_distribution(n, binomial)
+            }
+            Distribution::Zipf { n: set_size, s } => {
+                let zipf = rand_distr::Zipf::new(set_size, s)
+                    .unwrap_or_else(|e| panic!("invalid zipf distribution: {e}"))
+                    .map(|rank: f64| rank as u64);
+                data_gen::from_distribution(n, zipf)
+            }
+            Distribution::Geometric { p } => {
+                let geometric = rand_distr::Geometric::new(p)
+                    .unwrap_or_else(|e| panic!("invalid geometric distribution: {e}"));
+                data_gen::from_distribution(n, geometric)
             }
         }
     }
@@ -182,10 +226,8 @@ fn main() {
             build_and_report(&read_kv_file(&path), params);
         }
         Input::Distribution(distribution) => {
-            let weights = distribution.into_weights();
-            let dist: HashMap<&usize, f64> = weights.iter().map(|(k, v)| (k, *v)).collect();
             let n = cli.n.expect("clap guarantees -n is set when --distribution is used");
-            let kv = data_gen::from_value_distribution(n, &dist);
+            let kv = distribution.generate(n);
             if let Some(path) = &cli.output {
                 // Just generating data to save for later: skip building the
                 // (potentially expensive) retrieval structure entirely.
