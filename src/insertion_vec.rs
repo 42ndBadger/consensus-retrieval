@@ -28,8 +28,8 @@ pub struct GroupBounds {
 
 impl InsertionVec {
     pub fn new<K: Hash, V: Clone + Eq + Hash + Debug>(
-        kv: &HashMap<HashCode, V>,
-        probabilities: &Probabilities<V>,
+        kv: &HashMap<HashCode, V, impl BuildHasher>,
+        probabilities: &Probabilities<V, impl BuildHasher>,
         parms: Parameters,
         hasher: &RetrievalHasher<K, V, impl BuildHasher>,
     ) -> Self {
