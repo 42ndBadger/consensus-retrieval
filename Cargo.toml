@@ -7,6 +7,10 @@ edition = "2024"
 harness = false
 name = "query"
 
+[[bench]]
+harness = false
+name = "construct"
+
 [dependencies]
 ahash = "0.8.12"
 clap = { version = "4.6.4", features = ["derive"] }

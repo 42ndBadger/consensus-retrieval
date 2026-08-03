@@ -7,12 +7,12 @@ let
   ]);
 in
   pkgs.mkShell {
-    buildInputs = [
+    buildInputs = with pkgs; [
       pythonEnv
+      perf
     ];
 
     shellHook = ''
-      echo "Entering Python development shell with matplotlib and pandas."
-      echo "To run the script, use: python scripts/tune_parameters.py"
+        echo hello
     '';
   }

@@ -44,13 +44,10 @@ impl ConsensusVector {
 
         println!("num_tasks {}", tasks.len());
 
-        let mut max_task = 0;
-        let mut tries_for_max_task = 0;
-
         while consensus_vec.len() < tasks.len() {
             let task = consensus_vec.len();
 
-            if iterations % 1024 == 0 {
+            if iterations.is_multiple_of(1024) {
                 progress.set_position(task as u64);
             }
             iterations += 1;
