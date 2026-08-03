@@ -33,15 +33,15 @@ impl ConsensusVector {
         let mut iterations: u64 = 0;
         let mut hash_evaluations: u64 = 0;
         // root seed has size Seed::BITS - 1
-        let mut consensus_vec = BitVec::with_capacity(tasks.len() + Seed::BITS as usize - 1);
+        let mut consensus_vec = ConsensusVecManager::new(tasks.len() + Seed::BITS as usize - 1);
         // During the construction the consensus vector is consensus_vec with
         // current appended at the end
         let mut current: Seed = 0;
 
         println!("num_tasks {}", tasks.len());
 
-        while consensus_vec.len() < tasks.len() {
-            let task = consensus_vec.len();
+        while consensus_vec.current_task_idx() < tasks.len() {
+            let task = consensus_vec.current_task_idx();
 
             if iterations.is_multiple_of(1024) {
                 progress.set_position(task as u64);
@@ -62,20 +62,16 @@ impl ConsensusVector {
                 // append a bit to the consensus vector by shifting the most
                 // significant bit of current onto consusus_vec making space for
                 // a new task in current
-                let to_save = current >> (Seed::BITS - 1) == 1;
+                // let to_save = current >> (Seed::BITS - 1) == 1;
                 // println!("saving {to_save}");
-                consensus_vec.push(to_save);
-                current <<= 1;
+                consensus_vec.rotate_in(&mut current);
                 continue;
             }
 
             // invalid seed: backtrack to find next
             while current & 1 != 0 {
                 // backtrack
-                if let Some(bit) = consensus_vec.pop() {
-                    current = current >> 1 | (bit as Seed) << (Seed::BITS - 1);
-                } else {
-                    // root seed
+                if consensus_vec.rotate_out(&mut current) {
                     break;
                 }
             }
@@ -84,9 +80,7 @@ impl ConsensusVector {
 
         // final writeback
         // fore some stupid reason, bits get added from right to left...
-        consensus_vec.extend_from_bitslice(
-            &BitVec::<_, Msb0>::from_element(current)[..Seed::BITS as usize - 1],
-        );
+        let consensus_vec = consensus_vec.dismantle(current);
         assert_eq!(consensus_vec.len(), tasks.len() + Seed::BITS as usize - 1);
         // println!("{consensus_vec}");
         println!(
@@ -147,12 +141,103 @@ fn get_consensus_tasks<'a, K: Hash, V: Clone + Hash + Eq + Debug>(
     consensus_tasks
 }
 
+struct ConsensusVecManager {
+    consensus_vec: BitVec<Seed, Msb0>,
+    cache: Seed,
+    /// number of valid bits in the cache (from LSB)
+    cache_valid: u32,
+    /// number of bits not yet written to the cache (from LSB)
+    cache_unwritten: u32,
+}
+
+impl ConsensusVecManager {
+    pub fn new(cap: usize) -> Self {
+        Self {
+            consensus_vec: BitVec::with_capacity(cap),
+            cache: 0,
+            cache_valid: 0,
+            cache_unwritten: 0,
+        }
+    }
+
+    pub fn current_task_idx(&self) -> usize {
+        self.consensus_vec.len() + self.cache_unwritten as usize
+    }
+
+    pub fn rotate_in(&mut self, current: &mut Seed) {
+        if self.cache_unwritten == Seed::BITS {
+            // println!("writeback");
+            // write back
+            self.consensus_vec
+                .extend_from_bitslice(&BitVec::<_, Msb0>::from_element(self.cache));
+            self.cache_unwritten = 0;
+        }
+
+        let mut cache_seed = (self.cache as u128) << Seed::BITS | *current as u128;
+        cache_seed <<= 1;
+        self.cache = (cache_seed >> Seed::BITS) as Seed;
+        *current = cache_seed as Seed;
+
+        self.cache_valid = self.cache_valid.saturating_add(1).min(Seed::BITS); // just add
+        self.cache_unwritten = self.cache_unwritten.saturating_add(1).min(Seed::BITS); // just add
+
+        assert!(self.cache_unwritten <= self.cache_valid);
+    }
+
+    /// Returns `true` if the root seed is reached.
+    pub fn rotate_out(&mut self, current: &mut Seed) -> bool {
+        if self.cache_valid == 0 {
+            if self.consensus_vec.is_empty() {
+                // no action, root seed, we can just increment later
+                return true;
+            }
+            // println!("load");
+            // load
+            let to_read = self.consensus_vec.len().min(Seed::BITS as usize);
+            self.cache = self
+                .consensus_vec
+                .split_off(self.consensus_vec.len() - to_read)
+                .load_be();
+            self.cache_valid = to_read as u32;
+            self.cache_unwritten = self.cache_valid;
+        }
+
+        let mut cache_current = (self.cache as u128) << Seed::BITS | *current as u128;
+        cache_current >>= 1;
+        self.cache = (cache_current >> Seed::BITS) as Seed;
+        *current = cache_current as Seed;
+
+        // pop of last value
+        self.consensus_vec.resize(
+            self.consensus_vec
+                .len()
+                .saturating_sub((self.cache_unwritten == 0) as usize), // may be empty
+            false,
+        );
+        self.cache_valid = self.cache_valid.saturating_sub(1);
+        self.cache_unwritten = self.cache_unwritten.saturating_sub(1);
+        assert!(self.cache_unwritten <= self.cache_valid);
+        false
+    }
+
+    pub fn dismantle(mut self, final_seed: Seed) -> BitVec<Seed, Msb0> {
+        self.consensus_vec.extend_from_bitslice(
+            &BitVec::<_, Msb0>::from_element(self.cache)
+                [(Seed::BITS - self.cache_unwritten) as usize..],
+        );
+        self.consensus_vec.extend_from_bitslice(
+            &BitVec::<_, Msb0>::from_element(final_seed)[..Seed::BITS as usize - 1],
+        );
+        self.consensus_vec
+    }
+}
+
 #[cfg(test)]
 mod test {
     use bitvec::{bitvec, order::Msb0, vec::BitVec};
     use sux::bits::bit_vec;
 
-    use crate::hasher::Seed;
+    use crate::{consensus::ConsensusVecManager, hasher::Seed};
 
     #[test]
     #[ignore]
@@ -178,19 +263,27 @@ mod test {
         panic!()
     }
 
-    // #[test]
-    // fn test_cache() {
-    //     let mut cache = ConsensusVecManager::new(100);
-    //     let mut val: Seed = Seed::MAX;
-    //     cache.rotate_in(&mut val);
-    //     cache.rotate_in(&mut val);
-    //     cache.rotate_in(&mut val);
-    //     cache.rotate_in(&mut val);
-    //     val = 0;
-    //     cache.rotate_out(&mut val);
-    //     println!("{val}");
-    //     let vec = cache.dismantle(val);
-    //     println!("{vec}");
-    //     panic!()
-    // }
+    #[test]
+    fn test_cache() {
+        let mut cache = ConsensusVecManager::new(100);
+        let mut val: Seed = Seed::MAX;
+        cache.rotate_in(&mut val);
+        println!("{val}");
+        cache.rotate_in(&mut val);
+        println!("{val}");
+        for i in 0..64 {
+            cache.rotate_in(&mut val);
+        }
+        println!("{val}");
+        cache.rotate_in(&mut val);
+        println!("{val}");
+        val = 0;
+        cache.rotate_out(&mut val);
+        println!("{val}");
+        val = 11;
+        let vec = cache.dismantle(val);
+        println!("{vec}");
+        println!("{}", vec.len());
+        panic!()
+    }
 }
