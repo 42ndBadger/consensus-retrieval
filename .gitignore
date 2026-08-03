@@ -5,3 +5,5 @@ flamegraph.svg
 .direnv
 *.data
 tuning_results.*
+/tuning_report
+scripts/__pycache__/
