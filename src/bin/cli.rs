@@ -225,12 +225,10 @@ fn main() {
             build_and_report(&read_kv_file(&path), params);
         }
         Input::Distribution(distribution) => {
-            let weights = distribution.into_weights();
-            let dist: HashMap<&usize, f64> = weights.iter().map(|(k, v)| (k, *v)).collect();
             let n = cli
                 .n
                 .expect("clap guarantees -n is set when --distribution is used");
-            let kv = data_gen::from_value_distribution(n, &dist);
+            let kv = distribution.generate(n);
             if let Some(path) = &cli.output {
                 // Just generating data to save for later: skip building the
                 // (potentially expensive) retrieval structure entirely.
@@ -258,12 +256,7 @@ fn build_and_report<K: Hash, V: Clone + Hash + Eq + Debug>(kv: &HashMap<K, V>, p
     let cr = consensus_retrieval::ConsensusRetrieval::new_with_parameters(
         kv,
         params,
-        ahash::RandomState::with_seeds(
-            1123213325248739821,
-            1092830217302921830,
-            987213987219837321,
-            !1298372198372121322,
-        ),
+        ahash::RandomState::with_seed(123),
     );
 
     println!(
