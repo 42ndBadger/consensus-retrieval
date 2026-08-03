@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::hash::Hash;
+use std::hash::{BuildHasher, Hash};
 use std::mem::size_of;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -33,7 +33,9 @@ impl<V: Clone + Hash + Eq> AliasTable<V> {
     /// Builds an [`AliasTable`] from a [`HashMap`] of values and their weights.
     /// Adapted from Algorthim 2 of "Parallel Weighted Random Sampling" by Hübschle-Schneider und Sanders
     /// http://arxiv.org/abs/1903.00227
-    pub fn new(values_with_weights: &HashMap<&V, f64>) -> Result<Self, AliasTableError<V>> {
+    pub fn new(
+        values_with_weights: &HashMap<&V, f64, impl BuildHasher>,
+    ) -> Result<Self, AliasTableError<V>> {
         let n = values_with_weights.len();
         if n == 0 {
             return Err(AliasTableError::EmptyInput);

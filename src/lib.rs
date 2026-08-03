@@ -25,7 +25,7 @@ pub struct ConsensusRetrieval<K: Hash, V: Clone + Hash + Eq, H: BuildHasher = ah
     num_keys: usize,
 }
 
-type Probabilities<'a, V> = HashMap<&'a V, f64>;
+type Probabilities<'a, V, S> = HashMap<&'a V, f64, S>;
 
 impl<K: Hash, V: Clone + Hash + Eq + Debug> ConsensusRetrieval<K, V> {
     pub fn new_random(kv: &HashMap<K, V>, b: usize) -> Self {
@@ -33,16 +33,24 @@ impl<K: Hash, V: Clone + Hash + Eq + Debug> ConsensusRetrieval<K, V> {
     }
 }
 
-impl<K: Hash, V: Clone + Hash + Eq + Debug, H: BuildHasher> ConsensusRetrieval<K, V, H> {
-    pub fn new_with_hasher(kv: &HashMap<K, V>, b: usize, hasher_bulder: H) -> Self {
+impl<K: Hash, V: Clone + Hash + Eq + Debug, H: BuildHasher + Clone> ConsensusRetrieval<K, V, H> {
+    pub fn new_with_hasher(
+        kv: &HashMap<K, V, impl BuildHasher>,
+        b: usize,
+        hasher_bulder: H,
+    ) -> Self {
         Self::new_with_parameters(kv, Parameters::new_like_in_proof(b), hasher_bulder)
     }
 
-    pub fn new_with_parameters(kv: &HashMap<K, V>, params: Parameters, hasher_bulder: H) -> Self {
+    pub fn new_with_parameters(
+        kv: &HashMap<K, V, impl BuildHasher>,
+        params: Parameters,
+        hasher_bulder: H,
+    ) -> Self {
         if kv.is_empty() {
             panic!("empty input")
         }
-        let frequencies = calculate_frequencies(kv);
+        let frequencies = calculate_frequencies(kv, hasher_bulder.clone());
         let hasher = RetrievalHasher::new_with_hasher(&frequencies, hasher_bulder).unwrap();
         let kv: HashMap<HashCode, V> = hasher.convert_to_hash_codes(kv).expect("not duplicates");
 
@@ -118,18 +126,22 @@ impl<K: Hash, V: Clone + Hash + Eq + Debug, H: BuildHasher> ConsensusRetrieval<K
     }
 }
 
-fn calculate_frequencies<K: Hash, V: Clone + Hash + Eq>(
-    kv: &HashMap<K, V>,
-) -> Probabilities<'_, V> {
+fn calculate_frequencies<K: Hash, V: Clone + Hash + Eq, S: BuildHasher>(
+    kv: &HashMap<K, V, impl BuildHasher>,
+    hasher: S,
+) -> Probabilities<'_, V, S> {
     let total_num = kv.len() as f64;
     let num_vals = kv.values().fold(HashMap::<_, usize>::new(), |mut acc, v| {
         *acc.entry(v).or_default() += 1;
         acc
     });
-    num_vals
-        .into_iter()
-        .map(|(v, num)| (v, num as f64 / total_num))
-        .collect()
+    let mut map = HashMap::with_hasher(hasher);
+    map.extend(
+        num_vals
+            .into_iter()
+            .map(|(v, num)| (v, num as f64 / total_num)),
+    );
+    map
 }
 
 #[cfg(test)]
@@ -141,7 +153,7 @@ mod test {
     #[test]
     fn test_calc_frequencies() {
         let kv = [(0, 0), (1, 1), (2, 0), (3, 0)].into();
-        let probs = calculate_frequencies(&kv);
+        let probs = calculate_frequencies(&kv, std::hash::RandomState::new());
         assert_eq!(probs, [(&1, 0.25), (&0, 0.75)].into());
     }
 

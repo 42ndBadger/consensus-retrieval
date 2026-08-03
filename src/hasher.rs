@@ -18,7 +18,7 @@ pub struct RetrievalHasher<K: Hash, V: Clone + Hash + Eq, H: BuildHasher> {
 
 impl<K: Hash, V: Clone + Hash + Eq + Debug, H: BuildHasher> RetrievalHasher<K, V, H> {
     pub fn new_with_hasher(
-        probabilities: &HashMap<&V, f64>,
+        probabilities: &HashMap<&V, f64, impl BuildHasher>,
         hash_builder: H,
     ) -> Result<Self, AliasTableError<V>> {
         let alias_table = AliasTable::new(probabilities)?;
@@ -62,7 +62,10 @@ impl<K: Hash, V: Clone + Hash + Eq + Debug, H: BuildHasher> RetrievalHasher<K, V
 
     /// Also checks wheter no two keys have the same hash code.
     /// Returns `None` if that's the case.
-    pub fn convert_to_hash_codes(&self, kv: &HashMap<K, V>) -> Option<HashMap<HashCode, V>> {
+    pub fn convert_to_hash_codes(
+        &self,
+        kv: &HashMap<K, V, impl BuildHasher>,
+    ) -> Option<HashMap<HashCode, V>> {
         let mut result = HashMap::with_capacity(kv.len());
         for (k, v) in kv {
             let code = self.hash_to_hash_code(k);
