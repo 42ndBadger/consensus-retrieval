@@ -51,6 +51,41 @@ RESULT_PATTERNS = {
 }
 
 
+def _annotate_timeouts(ax, entries: list[tuple[object, str]]):
+    """Stacks one colored, boxed line of text per entry in the bottom-right
+    corner (the one spot the curve-identity legend at upper-right and the
+    marker-meaning legend at lower-left both leave free): `entries` is
+    (color, text) pairs. A timed-out run has no real (x, y) to plot -- it
+    never produced space_overhead/hash_evaluations -- so rather than invent
+    a position for it (which risks looking like real data), state plainly
+    in the color of the curve/category it belongs to which values timed
+    out."""
+    if not entries:
+        return
+    ax.annotate(
+        "timed out:",
+        xy=(0.99, 0.01 + 0.04 * len(entries)),
+        xycoords="axes fraction",
+        ha="right",
+        va="bottom",
+        fontsize=8,
+        fontweight="bold",
+        color="black",
+    )
+    for i, (color, text) in enumerate(entries):
+        ax.annotate(
+            text,
+            xy=(0.99, 0.01 + 0.04 * (len(entries) - i - 1)),
+            xycoords="axes fraction",
+            ha="right",
+            va="bottom",
+            fontsize=7.5,
+            fontweight="bold",
+            color=color,
+            bbox=dict(boxstyle="round,pad=0.2", facecolor="white", edgecolor=color, alpha=0.85),
+        )
+
+
 def run_once(
     binary: Path,
     file: Path,
@@ -163,6 +198,8 @@ def plot_tradeoff(
     title: str,
     out_path: Path,
     baseline: dict | None = None,
+    timed_out_by_category: dict | None = None,
+    timed_out: list | None = None,
 ):
     """Scatter of every run's actual space/time tradeoff -- the thing you
     actually want to pick a point from -- colored by `color_col`, with the
@@ -173,12 +210,19 @@ def plot_tradeoff(
     with a square, its smallest swept value with a down-triangle, and its
     largest with an up-triangle (`baseline` maps category -> baseline
     value, since `color_col` is assumed to also be the parameter name whose
-    swept values live in the like-named column)."""
+    swept values live in the like-named column). `timed_out_by_category`
+    maps category -> list of values that timed out on that category's line.
+
+    When not `categorical`, `timed_out` is a flat list of the param dicts
+    (b/beta_scale/eps_scale) that timed out, listed in a corner box (since
+    there's no discrete per-category color to attach them to)."""
     fig, ax = plt.subplots(figsize=(9, 6))
 
     if categorical:
         cmap = plt.get_cmap("tab10")
-        for i, category in enumerate(sorted(df[color_col].unique())):
+        timeout_entries = []
+        categories = sorted(set(df[color_col].unique()) | set((timed_out_by_category or {}).keys()))
+        for i, category in enumerate(categories):
             subset = df[df[color_col] == category]
             color = cmap(i % 10)
             ax.plot(
@@ -191,14 +235,18 @@ def plot_tradeoff(
             )
 
             # category is a parameter name (e.g. "b"); the values swept for
-            # its own line live in the column of that same name.
-            swept_values = subset[category]
-            min_row = subset.loc[swept_values.idxmin()]
-            max_row = subset.loc[swept_values.idxmax()]
-            ax.scatter(min_row["hash_evaluations"], min_row["space_overhead"], color=color, marker="v", s=110, zorder=4)
-            ax.scatter(max_row["hash_evaluations"], max_row["space_overhead"], color=color, marker="^", s=110, zorder=4)
+            # its own line live in the column of that same name. A category
+            # can be entirely absent from `df` if every value on its line
+            # timed out -- still give it a legend entry rather than letting
+            # it vanish silently.
+            if not subset.empty:
+                swept_values = subset[category]
+                min_row = subset.loc[swept_values.idxmin()]
+                max_row = subset.loc[swept_values.idxmax()]
+                ax.scatter(min_row["hash_evaluations"], min_row["space_overhead"], color=color, marker="v", s=110, zorder=4)
+                ax.scatter(max_row["hash_evaluations"], max_row["space_overhead"], color=color, marker="^", s=110, zorder=4)
 
-            if baseline is not None and category in baseline:
+            if baseline is not None and category in baseline and category in subset.columns:
                 base_rows = subset[subset[category] == baseline[category]]
                 if not base_rows.empty:
                     base_row = base_rows.iloc[0]
@@ -206,13 +254,54 @@ def plot_tradeoff(
                         base_row["hash_evaluations"], base_row["space_overhead"], color=color, marker="s", s=90, zorder=4
                     )
 
+            timed_out_values = sorted((timed_out_by_category or {}).get(category, []))
+            if timed_out_values:
+                timeout_entries.append(
+                    (color, f"{category}={','.join(f'{v:g}' for v in timed_out_values)}")
+                )
+
         param_legend = ax.legend(title=color_label, loc="upper right")
         ax.add_artist(param_legend)
+        _annotate_timeouts(ax, timeout_entries)
     else:
-        scatter = ax.scatter(
-            df["hash_evaluations"], df["space_overhead"], c=df[color_col], cmap="viridis", alpha=0.8
+        # b drives point color (shared colormap/scale across markers below);
+        # marker shape is one symbol per (beta_scale, eps_scale) combo, so
+        # all three swept dimensions are visible in one scatter.
+        markers = ["o", "s", "^", "v", "D", "P", "X", "*", "h", "8", "<", ">", "p", "H", "d"]
+        combos = sorted(
+            df[["beta_scale", "eps_scale"]].drop_duplicates().itertuples(index=False, name=None)
         )
+        vmin, vmax = df[color_col].min(), df[color_col].max()
+        scatter = None
+        for i, (beta_scale, eps_scale) in enumerate(combos):
+            subset = df[(df["beta_scale"] == beta_scale) & (df["eps_scale"] == eps_scale)]
+            scatter = ax.scatter(
+                subset["hash_evaluations"],
+                subset["space_overhead"],
+                c=subset[color_col],
+                cmap="viridis",
+                vmin=vmin,
+                vmax=vmax,
+                marker=markers[i % len(markers)],
+                edgecolors="black",
+                linewidths=0.4,
+                alpha=0.85,
+                label=f"beta_scale={beta_scale:g}, eps_scale={eps_scale:g}",
+            )
         fig.colorbar(scatter, label=color_label)
+        combo_legend = ax.legend(
+            title="(beta_scale, eps_scale)", loc="upper right", fontsize=7, title_fontsize=7
+        )
+        ax.add_artist(combo_legend)
+
+        if timed_out:
+            shown = timed_out[:5]
+            lines = [
+                "b={b} beta_scale={beta_scale} eps_scale={eps_scale}".format(**p) for p in shown
+            ]
+            if len(timed_out) > len(shown):
+                lines.append(f"... and {len(timed_out) - len(shown)} more")
+            _annotate_timeouts(ax, [("firebrick", line) for line in lines])
 
     best = df.loc[df["space_overhead"].idxmin()]
     ax.scatter(
@@ -245,20 +334,34 @@ def plot_tradeoff(
     return best
 
 
-def plot_b_curve(combined: pd.DataFrame, title: str, out_path: Path):
+def plot_b_curve(
+    combined: pd.DataFrame,
+    timeouts_by_curve: dict[tuple[str, float], list[float]],
+    title: str,
+    out_path: Path,
+):
     """One curve per (curve_type, curve_value): curve_type is "beta_scale"
     or "eps_scale" (solid vs dashed line), curve_value is the held value of
     whichever of those two wasn't varied. Each curve's points are its `b`
     sweep, colored distinctly and labeled in the legend; the smallest `b`
     on a curve is marked with a down-triangle, the largest with an
-    up-triangle."""
+    up-triangle.
+
+    `timeouts_by_curve` maps (curve_type, curve_value) -> the `b` values
+    that timed out on that curve, so a curve that timed out at its largest
+    (or every) `b` doesn't just quietly stop short looking complete --
+    those are listed in a corner box, in that curve's own color. A curve
+    where every `b` timed out still gets a (empty) line and legend entry,
+    so it doesn't silently vanish either."""
     fig, ax = plt.subplots(figsize=(10, 7))
 
     curve_keys = sorted(
-        combined.groupby(["curve_type", "curve_value"]).groups.keys(),
+        set(combined.groupby(["curve_type", "curve_value"]).groups.keys())
+        | set(timeouts_by_curve.keys()),
         key=lambda k: (k[0], k[1]),
     )
     cmap = plt.get_cmap("tab10")
+    timeout_entries = []
     for i, (curve_type, curve_value) in enumerate(curve_keys):
         subset = combined[
             (combined["curve_type"] == curve_type) & (combined["curve_value"] == curve_value)
@@ -275,15 +378,23 @@ def plot_b_curve(combined: pd.DataFrame, title: str, out_path: Path):
             label=f"{curve_type}={curve_value:g}",
         )
 
-        min_row = subset.loc[subset["b"].idxmin()]
-        max_row = subset.loc[subset["b"].idxmax()]
-        ax.scatter(min_row["hash_evaluations"], min_row["space_overhead"], color=color, marker="v", s=110, zorder=4)
-        ax.scatter(max_row["hash_evaluations"], max_row["space_overhead"], color=color, marker="^", s=110, zorder=4)
+        if not subset.empty:
+            min_row = subset.loc[subset["b"].idxmin()]
+            max_row = subset.loc[subset["b"].idxmax()]
+            ax.scatter(min_row["hash_evaluations"], min_row["space_overhead"], color=color, marker="v", s=110, zorder=4)
+            ax.scatter(max_row["hash_evaluations"], max_row["space_overhead"], color=color, marker="^", s=110, zorder=4)
+
+        timed_out_bs = sorted(timeouts_by_curve.get((curve_type, curve_value), []))
+        if timed_out_bs:
+            timeout_entries.append(
+                (color, f"{curve_type}={curve_value:g}: b={','.join(f'{b:g}' for b in timed_out_bs)}")
+            )
 
     curve_legend = ax.legend(
         title="curve (solid=beta_scale, dashed=eps_scale)", loc="upper right", fontsize=8
     )
     ax.add_artist(curve_legend)
+    _annotate_timeouts(ax, timeout_entries)
 
     best = combined.loc[combined["space_overhead"].idxmin()]
     ax.scatter([best["hash_evaluations"]], [best["space_overhead"]], color="red", marker="*", s=250, zorder=5)
@@ -317,7 +428,7 @@ def run_b_curve(args):
     )
 
     frames = []
-    total_timed_out = 0
+    timeouts_by_curve = {}
     for beta_scale in args.beta_scale:
         print(f"-- curve beta_scale={beta_scale} --")
         df, timed_out = sweep(
@@ -328,7 +439,8 @@ def run_b_curve(args):
             {"beta_scale": beta_scale, "eps_scale": baseline_eps_scale},
             args.timeout,
         )
-        total_timed_out += len(timed_out)
+        if timed_out:
+            timeouts_by_curve[("beta_scale", beta_scale)] = timed_out
         if not df.empty:
             frames.append(df.assign(curve_type="beta_scale", curve_value=beta_scale))
 
@@ -342,7 +454,8 @@ def run_b_curve(args):
             {"beta_scale": baseline_beta_scale, "eps_scale": eps_scale},
             args.timeout,
         )
-        total_timed_out += len(timed_out)
+        if timed_out:
+            timeouts_by_curve[("eps_scale", eps_scale)] = timed_out
         if not df.empty:
             frames.append(df.assign(curve_type="eps_scale", curve_value=eps_scale))
 
@@ -350,6 +463,7 @@ def run_b_curve(args):
     combined.to_csv(args.csv_out, index=False)
     print(f"wrote {args.csv_out}")
 
+    total_timed_out = sum(len(v) for v in timeouts_by_curve.values())
     completed = len(combined)
     total = completed + total_timed_out
     print(f"{completed}/{total} runs completed, {total_timed_out} timed out")
@@ -360,6 +474,7 @@ def run_b_curve(args):
 
     best = plot_b_curve(
         combined,
+        timeouts_by_curve,
         title=(
             f"b-curve sweep against {args.file}\n"
             f"baseline: beta_scale={baseline_beta_scale}, eps_scale={baseline_eps_scale}\n"
@@ -397,6 +512,7 @@ def run_grid(args):
             f"{len(timed_out)} timed out"
         ),
         out_path=args.plot_out,
+        timed_out=timed_out,
     )
     print(
         f"best space overhead: {best['space_overhead']:.4f} bits/key at "
@@ -533,6 +649,7 @@ def main():
         ),
         out_path=args.plot_out,
         baseline=baseline,
+        timed_out_by_category={name: t for name, (_df, t) in sweeps.items() if t},
     )
     print(
         f"best space overhead: {best['space_overhead']:.4f} bits/key "
