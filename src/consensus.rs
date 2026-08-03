@@ -5,20 +5,16 @@ use std::{
     mem::size_of_val,
 };
 
-use indicatif::ProgressBar;
-use mem_dbg::{MemSize, SizeFlags};
-use sux::{
-    bits::BitVec,
-    traits::{BitCount, BitVecValueOps},
-};
-
 use crate::{
     hasher::{HashCode, RetrievalHasher, Seed},
     insertion_vec::InsertionVec,
 };
+use bitvec::{field::BitField, order::Msb0, vec::BitVec};
+use indicatif::ProgressBar;
+use mem_dbg::{MemSize, SizeFlags};
 
 pub struct ConsensusVector {
-    bitvec: BitVec<Vec<Seed>>,
+    bitvec: BitVec<Seed, Msb0>,
     hash_evaluations: u64,
 }
 
@@ -88,7 +84,9 @@ impl ConsensusVector {
 
         // final writeback
         // fore some stupid reason, bits get added from right to left...
-        consensus_vec.append_value(current.reverse_bits(), Seed::BITS as usize - 1);
+        consensus_vec.extend_from_bitslice(
+            &BitVec::<_, Msb0>::from_element(current)[..Seed::BITS as usize - 1],
+        );
         assert_eq!(consensus_vec.len(), tasks.len() + Seed::BITS as usize - 1);
         // println!("{consensus_vec}");
         println!(
@@ -102,10 +100,7 @@ impl ConsensusVector {
     }
 
     pub fn get_seed_at_task(&self, task_idx: usize) -> Seed {
-        let seed = self
-            .bitvec
-            .get_value(task_idx, Seed::BITS as usize)
-            .reverse_bits(); // todo avoid reverse...
+        let seed = self.bitvec[task_idx..][..Seed::BITS as usize].load_be();
         // println!("queried seed {seed} at {task_idx}");
         seed
     }
@@ -122,7 +117,8 @@ impl ConsensusVector {
             bitvec,
             hash_evaluations,
         } = self;
-        bitvec.mem_size(SizeFlags::default()) + size_of_val(hash_evaluations)
+        // bitvec.leng(SizeFlags::default()) + size_of_val(hash_evaluations)
+        todo!()
     }
 
     pub fn variable_part_bit_size(&self) -> usize {
@@ -153,6 +149,7 @@ fn get_consensus_tasks<'a, K: Hash, V: Clone + Hash + Eq + Debug>(
 
 #[cfg(test)]
 mod test {
+    use bitvec::{bitvec, order::Msb0, vec::BitVec};
     use sux::bits::bit_vec;
 
     use crate::hasher::Seed;
@@ -165,4 +162,35 @@ mod test {
         println!("{bv}");
         panic!()
     }
+
+    #[test]
+    #[ignore]
+    fn test_bitvec2() {
+        let mut bv = bitvec![Seed, Msb0; 0; 0];
+        bv.push(true);
+        bv.push(false);
+        bv.extend_from_bitslice(
+            &BitVec::<_, Msb0>::from_element(0x7usize)[..Seed::BITS as usize - 1],
+        );
+        println!("{bv}");
+        println!("{}", bv.len());
+        println!("{}", bv.len());
+        panic!()
+    }
+
+    // #[test]
+    // fn test_cache() {
+    //     let mut cache = ConsensusVecManager::new(100);
+    //     let mut val: Seed = Seed::MAX;
+    //     cache.rotate_in(&mut val);
+    //     cache.rotate_in(&mut val);
+    //     cache.rotate_in(&mut val);
+    //     cache.rotate_in(&mut val);
+    //     val = 0;
+    //     cache.rotate_out(&mut val);
+    //     println!("{val}");
+    //     let vec = cache.dismantle(val);
+    //     println!("{vec}");
+    //     panic!()
+    // }
 }
