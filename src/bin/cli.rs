@@ -73,8 +73,7 @@ impl Input {
 
 /// Reads `key value` pairs, one per line, separated by a space.
 fn read_kv_file(path: &str) -> HashMap<String, u64> {
-    let contents =
-        fs::read_to_string(path).unwrap_or_else(|e| panic!("can't read {path:?}: {e}"));
+    let contents = fs::read_to_string(path).unwrap_or_else(|e| panic!("can't read {path:?}: {e}"));
     contents
         .lines()
         .filter(|line| !line.trim().is_empty())
@@ -184,7 +183,9 @@ fn main() {
         Input::Distribution(distribution) => {
             let weights = distribution.into_weights();
             let dist: HashMap<&usize, f64> = weights.iter().map(|(k, v)| (k, *v)).collect();
-            let n = cli.n.expect("clap guarantees -n is set when --distribution is used");
+            let n = cli
+                .n
+                .expect("clap guarantees -n is set when --distribution is used");
             let kv = data_gen::from_value_distribution(n, &dist);
             if let Some(path) = &cli.output {
                 // Just generating data to save for later: skip building the
@@ -213,7 +214,12 @@ fn build_and_report<K: Hash, V: Clone + Hash + Eq + Debug>(kv: &HashMap<K, V>, p
     let cr = consensus_retrieval::ConsensusRetrieval::new_with_parameters(
         kv,
         params,
-        ahash::RandomState::with_seed(123),
+        ahash::RandomState::with_seeds(
+            1123213325248739821,
+            1092830217302921830,
+            987213987219837321,
+            !1298372198372121322,
+        ),
     );
 
     println!(
