@@ -1,6 +1,7 @@
 use std::{collections::HashMap, time::Instant};
 
 use consensus_retrieval::{ConsensusRetrieval, parameters::Parameters};
+use fxhash::FxBuildHasher;
 use rand::{RngExt, SeedableRng, rngs::StdRng};
 
 fn main() {
@@ -16,16 +17,14 @@ fn main() {
     // let params = Parameters::new_like_in_proof(b);
 
     let start = Instant::now();
-    let retrieval = ConsensusRetrieval::new_with_parameters(
-        &kv,
-        params,
-        ahash::RandomState::with_seeds(
-            1123213325248739821,
-            1092830217302921830,
-            987213987219837321,
-            !1298372198372121322,
-        ),
+    let hasher = ahash::RandomState::with_seeds(
+        1123213325248739821,
+        1092830217302921830,
+        987213987219837321,
+        !1298372198372121322,
     );
+    let hasher = FxBuildHasher::new();
+    let retrieval = ConsensusRetrieval::new_with_parameters(&kv, params, hasher);
     let took = start.elapsed();
     println!("construction took {took:?}, {:?} per key", took / n);
     println!("overhead {}", retrieval.space_overhead());

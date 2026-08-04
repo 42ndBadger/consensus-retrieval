@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, hash::BuildHasherDefault};
 
 use ahash::RandomState;
 use consensus_retrieval::{ConsensusRetrieval, parameters::Parameters};
@@ -22,16 +22,18 @@ fn construct(c: &mut Criterion) {
         987213987219837321,
         !1298372198372121322,
     );
-    let state = fxhash::FxBuildHasher::new();
+    // let create_hasher = || ahash::RandomState::new();
+    let create_hasher = || fxhash::FxBuildHasher::new();
 
-    c.bench_function("construct_uniform_3_1000", |b| {
-        b.iter(|| ConsensusRetrieval::new_with_parameters(&kv, params, state.clone()))
-    });
+    // let fixed_hasher = create_hasher();
+    // c.bench_function("construct_uniform_3_1000", |b| {
+    //     b.iter(|| ConsensusRetrieval::new_with_parameters(&kv, params, fixed_hasher.clone()))
+    // });
 
     c.bench_function("construct_uniform_3_1000_rand", |b| {
         // b.iter(|| ConsensusRetrieval::new_with_parameters(&kv, params, ahash::RandomState::new()))
         b.iter_batched(
-            RandomState::new,
+            create_hasher,
             |state| ConsensusRetrieval::new_with_parameters(&kv, params, state),
             BatchSize::SmallInput,
         )
