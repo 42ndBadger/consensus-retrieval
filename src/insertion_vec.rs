@@ -172,6 +172,9 @@ impl InsertionVec {
     pub fn variable_part_bit_size(&self) -> usize {
         self.select.mem_size(SizeFlags::default()) * u8::BITS as usize
     }
+    pub fn raw_insertion_vec_bit_size(&self) -> usize {
+        self.select.len()
+    }
 }
 
 #[cfg(test)]

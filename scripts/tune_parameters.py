@@ -19,6 +19,10 @@ lines) and once per --eps-scale value (dashed lines), plotting each as its
 own curve -- useful for seeing how the space/time tradeoff across b shifts
 as beta_scale or eps_scale changes.
 
+Every mode also writes a --table-out Typst file (compiled to a PDF
+alongside it) breaking each run's space down into consensus vector / raw
+insertion vector / select structure, as percentages of their total.
+
 Usage:
     python3 scripts/tune_parameters.py --file path/to/kv.txt \
         --b 2 4 8 16 32 --beta-scale 0.5 1 2 --eps-scale 0.5 1 2
@@ -45,10 +49,18 @@ import pandas as pd
 from matplotlib.lines import Line2D
 
 RESULT_PATTERNS = {
-    "space_bytes": re.compile(r"space:\s*(\d+)"),
-    "space_overhead": re.compile(r"space overhead:\s*([-\d.eE]+)"),
-    "hash_evaluations": re.compile(r"time:\s*(\d+)"),
+    "space_bytes": re.compile(r"space \[byte\]:\s*(\d+)"),
+    "space_overhead": re.compile(r"space overhead \[bits/key\]:\s*([-\d.eE]+)"),
+    "raw_insertion_vec_bits": re.compile(r"raw_insertion_vec_bits \[bit\]:\s*(\d+)"),
+    "select_structure_bits": re.compile(r"select_structure_bits \[bit\]:\s*(\d+)"),
+    "consensus_vec_bits": re.compile(r"consensus_vec_bits \[bit\]:\s*(\d+)"),
+    "hash_evaluations": re.compile(r"time \[hash evaluations\]:\s*(\d+)"),
 }
+
+# The three space components a run's total (variable-part) space breaks
+# down into -- used both for the CSV columns above and for the percentage
+# breakdown table.
+SPACE_COMPONENTS = ["consensus_vec_bits", "raw_insertion_vec_bits", "select_structure_bits"]
 
 
 def _annotate_timeouts(ax, entries: list[tuple[object, str]]):
@@ -84,6 +96,66 @@ def _annotate_timeouts(ax, entries: list[tuple[object, str]]):
             color=color,
             bbox=dict(boxstyle="round,pad=0.2", facecolor="white", edgecolor=color, alpha=0.85),
         )
+
+
+def _typst_escape(text: str) -> str:
+    """Escapes markup-significant characters so arbitrary cell text is
+    always rendered literally in Typst content mode."""
+    return text.replace("\\", "\\\\").replace("_", "\\_").replace("*", "\\*").replace("#", "\\#")
+
+
+def write_typst_table(df: pd.DataFrame, id_cols: list[str], out_path: Path):
+    """Writes a Typst table with the space breakdown -- consensus vector /
+    raw insertion vector / select structure, as a percentage of their total
+    (the variable, input-size-scaling part of the structure) -- one row per
+    successful run -- then compiles it to a PDF alongside it."""
+    if df.empty:
+        print(f"no successful runs; not writing {out_path}", file=sys.stderr)
+        return
+
+    total = df[SPACE_COMPONENTS].sum(axis=1)
+    table = df[[c for c in id_cols if c in df.columns]].copy()
+    for col in SPACE_COMPONENTS:
+        table[col] = df[col].astype("Int64")
+        table[col.removesuffix("_bits") + "_%"] = (df[col] / total * 100).round(2)
+
+    def cell(v) -> str:
+        return "" if pd.isna(v) else _typst_escape(str(v))
+
+    header_cells = ", ".join(f"[*{_typst_escape(c)}*]" for c in table.columns)
+    row_lines = [
+        ", ".join(f"[{cell(v)}]" for v in row) for row in table.itertuples(index=False)
+    ]
+
+    parts = [
+        '#set page(paper: "a4", flipped: true, margin: 1.5cm)',
+        "#set text(size: 8pt)",
+        "= Space breakdown",
+        "",
+        "#table(",
+        f"  columns: {len(table.columns)} * (auto,),",
+        "  align: center,",
+        f"  {header_cells},",
+        *(f"  {line}," for line in row_lines),
+        ")",
+        "",
+    ]
+    out_path.write_text("\n".join(parts))
+    print(f"wrote {out_path}")
+
+    pdf_path = out_path.with_suffix(".pdf")
+    try:
+        proc = subprocess.run(
+            ["typst", "compile", str(out_path), str(pdf_path)],
+            capture_output=True,
+            text=True,
+        )
+        if proc.returncode != 0:
+            print(f"typst compile failed:\n{proc.stderr}", file=sys.stderr)
+        else:
+            print(f"wrote {pdf_path}")
+    except FileNotFoundError:
+        print("typst not found on PATH; left the .typ file uncompiled", file=sys.stderr)
 
 
 def run_once(
@@ -462,6 +534,7 @@ def run_b_curve(args):
     combined = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
     combined.to_csv(args.csv_out, index=False)
     print(f"wrote {args.csv_out}")
+    write_typst_table(combined, ["curve_type", "curve_value", "b"], args.table_out)
 
     total_timed_out = sum(len(v) for v in timeouts_by_curve.values())
     completed = len(combined)
@@ -494,6 +567,7 @@ def run_grid(args):
     )
     df.to_csv(args.csv_out, index=False)
     print(f"wrote {args.csv_out}")
+    write_typst_table(df, ["b", "beta_scale", "eps_scale"], args.table_out)
 
     total = len(df) + len(timed_out)
     print(f"{len(df)}/{total} runs completed, {len(timed_out)} timed out")
@@ -575,6 +649,16 @@ def main():
     )
     parser.add_argument("--csv-out", type=Path, default=Path("tuning_results.csv"))
     parser.add_argument("--plot-out", type=Path, default=Path("tuning_results.png"))
+    parser.add_argument(
+        "--table-out",
+        type=Path,
+        default=Path("tuning_breakdown.typ"),
+        help=(
+            "Typst file (compiled to a same-named .pdf) for the per-run "
+            "space breakdown (consensus vector / raw insertion vector / "
+            "select structure, as percentages)"
+        ),
+    )
     args = parser.parse_args()
 
     if not args.bin.exists():
@@ -625,6 +709,9 @@ def main():
     )
     combined.to_csv(args.csv_out, index=False)
     print(f"wrote {args.csv_out}")
+    write_typst_table(
+        combined, ["swept_param", "b", "beta_scale", "eps_scale"], args.table_out
+    )
 
     total_timed_out = sum(len(timed_out) for _df, timed_out in sweeps.values())
     total = len(combined) + total_timed_out

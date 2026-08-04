@@ -259,11 +259,16 @@ fn build_and_report<K: Hash, V: Clone + Hash + Eq + Debug>(kv: &HashMap<K, V>, p
         ahash::RandomState::with_seed(123),
     );
 
+    let raw_insertion_vec_bits = cr.raw_insertion_vec_bit_size();
+    let select_structure_bits = cr.insertion_vec_bit_size() - raw_insertion_vec_bits;
+
     println!(
-        "space: {}\n\nspace overhead: {}\ninsertion_vec_bits: {}\nconsensus_vec_bits: {}\ntime: {}",
+        "space [byte]: {}\n\nspace overhead [bits/key]: {}\ninsertion_vec_bits [bit]: {}\nraw_insertion_vec_bits [bit]: {}\nselect_structure_bits [bit]: {}\nconsensus_vec_bits [bit]: {}\ntime [hash evaluations]: {}",
         cr.space_in_bytes(),
         cr.space_overhead(),
         cr.insertion_vec_bit_size(),
+        raw_insertion_vec_bits,
+        select_structure_bits,
         cr.consensus_vec_bit_size(),
         cr.hash_evaluations()
     );

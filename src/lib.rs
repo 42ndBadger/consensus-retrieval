@@ -102,6 +102,10 @@ where
     pub fn insertion_vec_bit_size(&self) -> usize {
         self.insertion_vec.variable_part_bit_size()
     }
+    /// Bit size of the insertion vector without the select index.
+    pub fn raw_insertion_vec_bit_size(&self) -> usize {
+        self.insertion_vec.raw_insertion_vec_bit_size()
+    }
 
     /// Bits used by the consensus vector, the other component of
     /// `variable_part_bit_size`.

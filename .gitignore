@@ -7,3 +7,5 @@ flamegraph.svg
 tuning_results.*
 /tuning_report
 scripts/__pycache__/
+tuning_breakdown.typ
+tuning_breakdown.pdf
