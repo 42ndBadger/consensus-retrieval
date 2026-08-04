@@ -10,13 +10,19 @@ use std::{
 pub type Seed = u64;
 pub type HashCode = u64;
 
-pub struct RetrievalHasher<K: Hash, V: Clone + Hash + Eq, H: BuildHasher> {
+pub struct RetrievalHasher<K: Hash, V: Clone + Hash + Eq, H: BuildHasher>
+where
+    H::Hasher: Clone,
+{
     _p: PhantomData<(K, V)>,
     alias_table: AliasTable<V>,
     build_hasher: H,
 }
 
-impl<K: Hash, V: Clone + Hash + Eq + Debug, H: BuildHasher> RetrievalHasher<K, V, H> {
+impl<K: Hash, V: Clone + Hash + Eq + Debug, H: BuildHasher> RetrievalHasher<K, V, H>
+where
+    H::Hasher: Clone,
+{
     pub fn new_with_hasher(
         probabilities: &HashMap<&V, f64, impl BuildHasher>,
         hash_builder: H,
@@ -30,34 +36,33 @@ impl<K: Hash, V: Clone + Hash + Eq + Debug, H: BuildHasher> RetrievalHasher<K, V
         })
     }
 
-    /// Hashes `value` within its own `tag` domain, so that the different
-    /// `hash_to_*`/`hash` methods never collide with each other just because
-    /// they were called with the same underlying `key`.
-    fn hash64(&self, tag: u8, value: impl Hash) -> u64 {
-        let mut hasher = self.build_hasher.build_hasher();
-        tag.hash(&mut hasher);
-        value.hash(&mut hasher);
-        hasher.finish()
-    }
-
     pub fn hash_to_group(&self, key: HashCode, num_groups: usize) -> usize {
-        fast_range(self.hash64(0, key), num_groups)
+        fast_range(self.build_hasher.hash_one(key), num_groups)
     }
 
     /// Must return "independent" hash values for different `num_tasks`.
     pub fn hash_to_task(&self, key: HashCode, num_tasks: usize) -> usize {
         // num_tasks is folded into the hashed bytes (not just the modulus),
         // so results for different num_tasks don't correlate.
-        fast_range(self.hash64(1, (key, num_tasks)), num_tasks)
+        fast_range(self.build_hasher.hash_one((key, num_tasks)), num_tasks)
+    }
+
+    pub fn with_seed(&self, seed: Seed) -> SeededHasher<'_, K, V, H> {
+        let mut hasher = self.build_hasher.build_hasher();
+        seed.hash(&mut hasher);
+        SeededHasher {
+            _p: PhantomData,
+            hasher,
+            parent: self,
+        }
     }
 
     pub fn hash(&self, key: HashCode, seed: Seed) -> &V {
-        let h = self.hash64(2, (key, seed));
-        self.alias_table.sample(h)
+        self.with_seed(seed).hash(key)
     }
 
     pub fn hash_to_hash_code(&self, key: &K) -> HashCode {
-        self.hash64(3, key)
+        self.build_hasher.hash_one(key)
     }
 
     /// Also checks wheter no two keys have the same hash code.
@@ -84,6 +89,27 @@ impl<K: Hash, V: Clone + Hash + Eq + Debug, H: BuildHasher> RetrievalHasher<K, V
             build_hasher,
         } = self;
         alias_table.space_in_bytes() + size_of_val(build_hasher)
+    }
+}
+
+pub struct SeededHasher<'a, K: Hash, V: Clone + Eq + Hash, H: BuildHasher>
+where
+    H::Hasher: Clone,
+{
+    _p: PhantomData<V>,
+    hasher: H::Hasher,
+    parent: &'a RetrievalHasher<K, V, H>,
+}
+
+impl<'a, K: Hash, V: Clone + Eq + Hash, H: BuildHasher> SeededHasher<'a, K, V, H>
+where
+    H::Hasher: Clone,
+{
+    pub fn hash(&self, code: HashCode) -> &'a V {
+        let mut hasher = self.hasher.clone();
+        code.hash(&mut hasher);
+        let hash = hasher.finish();
+        self.parent.alias_table.sample(hash)
     }
 }
 

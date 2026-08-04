@@ -27,12 +27,15 @@ pub struct GroupBounds {
 }
 
 impl InsertionVec {
-    pub fn new<K: Hash, V: Clone + Eq + Hash + Debug>(
+    pub fn new<K: Hash, V: Clone + Eq + Hash + Debug, H: BuildHasher>(
         kv: &HashMap<HashCode, V, impl BuildHasher>,
         probabilities: &Probabilities<V, impl BuildHasher>,
         parms: Parameters,
-        hasher: &RetrievalHasher<K, V, impl BuildHasher>,
-    ) -> Self {
+        hasher: &RetrievalHasher<K, V, H>,
+    ) -> Self
+    where
+        H::Hasher: Clone,
+    {
         let b = parms.inital_group_width;
         #[allow(non_snake_case)]
         let H: f64 = probabilities.values().map(|p| -p * p.log2()).sum();

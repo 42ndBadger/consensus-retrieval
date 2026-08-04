@@ -2,7 +2,6 @@ use std::{
     collections::HashMap,
     fmt::Debug,
     hash::{BuildHasher, Hash},
-    mem::size_of_val,
 };
 
 use crate::{
@@ -11,7 +10,6 @@ use crate::{
 };
 use bitvec::{field::BitField, order::Msb0, vec::BitVec};
 use indicatif::ProgressBar;
-use mem_dbg::{MemSize, SizeFlags};
 
 pub struct ConsensusVector {
     bitvec: BitVec<Seed, Msb0>,
@@ -19,11 +17,14 @@ pub struct ConsensusVector {
 }
 
 impl ConsensusVector {
-    pub fn new<K: Hash, V: Clone + Hash + Eq + Debug>(
-        kv: &HashMap<HashCode, V>,
+    pub fn new<K: Hash, V: Clone + Hash + Eq + Debug, H: BuildHasher>(
+        kv: &HashMap<HashCode, V, impl BuildHasher>,
         insertion_vec: &InsertionVec,
-        hasher: &RetrievalHasher<K, V, impl BuildHasher>,
-    ) -> Self {
+        hasher: &RetrievalHasher<K, V, H>,
+    ) -> Self
+    where
+        H::Hasher: Clone,
+    {
         let tasks = get_consensus_tasks(kv, insertion_vec, hasher);
 
         let max_keys_per_task = tasks.iter().map(Vec::len).max().unwrap();
@@ -48,10 +49,14 @@ impl ConsensusVector {
             }
             iterations += 1;
 
-            let task_valid = tasks[task].iter().all(|&(k, v)| {
-                hash_evaluations += 1;
-                hasher.hash(k, current) == v
-            });
+            let seeded_hasher = hasher.with_seed(current);
+            let task_valid = tasks[task]
+                .iter()
+                .map(|&(k, v)| {
+                    hash_evaluations += 1;
+                    seeded_hasher.hash(k) == v
+                })
+                .fold(true, |acc, valid| acc & valid); // dont do .all, short circuit is bad for branch prediction
             // println!(
             //     "Task {task} with keys {:?} is valid? {task_valid} seed {current}",
             //     tasks[task]
@@ -130,11 +135,14 @@ impl ConsensusVector {
     }
 }
 
-fn get_consensus_tasks<'a, K: Hash, V: Clone + Hash + Eq + Debug>(
-    kv: &'a HashMap<HashCode, V>,
+fn get_consensus_tasks<'a, K: Hash, V: Clone + Hash + Eq + Debug, H: BuildHasher>(
+    kv: &'a HashMap<HashCode, V, impl BuildHasher>,
     insertion_vec: &InsertionVec,
-    hasher: &RetrievalHasher<K, V, impl BuildHasher>,
-) -> Vec<Vec<(HashCode, &'a V)>> {
+    hasher: &RetrievalHasher<K, V, H>,
+) -> Vec<Vec<(HashCode, &'a V)>>
+where
+    H::Hasher: Clone,
+{
     let mut consensus_tasks = vec![Vec::new(); insertion_vec.total_num_tasks()];
 
     for (&k, v) in kv.iter() {

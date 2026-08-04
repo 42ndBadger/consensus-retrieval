@@ -13,11 +13,14 @@ use crate::{
 mod alias;
 mod consensus;
 pub mod data_gen;
-mod hasher;
+pub mod hasher;
 mod insertion_vec;
 pub mod parameters;
 
-pub struct ConsensusRetrieval<K: Hash, V: Clone + Hash + Eq, H: BuildHasher = ahash::RandomState> {
+pub struct ConsensusRetrieval<K: Hash, V: Clone + Hash + Eq, H: BuildHasher = ahash::RandomState>
+where
+    H::Hasher: Clone,
+{
     insertion_vec: insertion_vec::InsertionVec,
     consensus_vector: consensus::ConsensusVector,
     hasher: hasher::RetrievalHasher<K, V, H>,
@@ -33,7 +36,10 @@ impl<K: Hash, V: Clone + Hash + Eq + Debug> ConsensusRetrieval<K, V> {
     }
 }
 
-impl<K: Hash, V: Clone + Hash + Eq + Debug, H: BuildHasher + Clone> ConsensusRetrieval<K, V, H> {
+impl<K: Hash, V: Clone + Hash + Eq + Debug, H: BuildHasher + Clone> ConsensusRetrieval<K, V, H>
+where
+    H::Hasher: Clone,
+{
     pub fn new_with_hasher(
         kv: &HashMap<K, V, impl BuildHasher>,
         b: usize,

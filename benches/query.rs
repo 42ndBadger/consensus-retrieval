@@ -5,27 +5,30 @@ use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use rand::{RngExt, SeedableRng, random_range, rngs::StdRng};
 
 fn query(c: &mut Criterion) {
-    let n = 100_000;
+    let n = 10_000_000;
     let sigma = 3;
     println!("n={n}, sigma={sigma}");
 
     let mut rng = StdRng::seed_from_u64(42);
     let kv: HashMap<u32, u32> = (0..n).map(|k| (k, rng.random_range(0..sigma))).collect();
 
-    let b = 40;
+    let b = 20;
     let params = Parameters::new_from_raw(b, 1. / b as f64, 0.1);
     // let params = Parameters::new_like_in_proof(b);
-
-    let retrieval = ConsensusRetrieval::new_with_parameters(
-        &kv,
-        params,
-        ahash::RandomState::with_seeds(
-            1123213325248739821,
-            1092830217302921830,
-            987213987219837321,
-            !1298372198372121322,
-        ),
+    let state = ahash::RandomState::with_seeds(
+        1123213325248739821,
+        1092830217302921830,
+        987213987219837321,
+        !1298372198372121322,
     );
+    let state = fxhash::FxBuildHasher::new();
+
+    let retrieval = ConsensusRetrieval::new_with_parameters(&kv, params, state);
+    println!(
+        "size: {}",
+        human_bytes::human_bytes(retrieval.variable_part_bit_size() as f32 / 8.)
+    );
+    println!("overhead: {}", retrieval.space_overhead());
 
     let param = 28123;
     c.bench_with_input(BenchmarkId::new("query const", param), &param, |b, v| {
