@@ -124,6 +124,12 @@ where
     pub fn space_overhead(&self) -> f64 {
         self.variable_part_bit_size() as f64 / self.num_keys as f64 - self.entropy_per_key
     }
+    pub fn entropy_per_key(&self) -> f64 {
+        self.entropy_per_key
+    }
+    pub fn num_keys(&self) -> usize {
+        self.num_keys
+    }
 
     pub fn query(&self, key: &K) -> V {
         let key = self.hasher.hash_to_hash_code(key);

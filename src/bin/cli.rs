@@ -263,7 +263,9 @@ fn build_and_report<K: Hash, V: Clone + Hash + Eq + Debug>(kv: &HashMap<K, V>, p
     let select_structure_bits = cr.insertion_vec_bit_size() - raw_insertion_vec_bits;
 
     println!(
-        "space [byte]: {}\n\nspace overhead [bits/key]: {}\ninsertion_vec_bits [bit]: {}\nraw_insertion_vec_bits [bit]: {}\nselect_structure_bits [bit]: {}\nconsensus_vec_bits [bit]: {}\ntime [hash evaluations]: {}",
+        "num_keys: {}\nentropy_per_key [bit]: {}\nspace [byte]: {}\n\nspace overhead [bits/key]: {}\ninsertion_vec_bits [bit]: {}\nraw_insertion_vec_bits [bit]: {}\nselect_structure_bits [bit]: {}\nconsensus_vec_bits [bit]: {}\ntime [hash evaluations]: {}",
+        cr.num_keys(),
+        cr.entropy_per_key(),
         cr.space_in_bytes(),
         cr.space_overhead(),
         cr.insertion_vec_bit_size(),

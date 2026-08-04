@@ -45,10 +45,13 @@ import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 from matplotlib.lines import Line2D
 
 RESULT_PATTERNS = {
+    "num_keys": re.compile(r"num_keys:\s*(\d+)"),
+    "entropy_per_key": re.compile(r"entropy_per_key \[bit\]:\s*([-\d.eE]+)"),
     "space_bytes": re.compile(r"space \[byte\]:\s*(\d+)"),
     "space_overhead": re.compile(r"space overhead \[bits/key\]:\s*([-\d.eE]+)"),
     "raw_insertion_vec_bits": re.compile(r"raw_insertion_vec_bits \[bit\]:\s*(\d+)"),
@@ -60,7 +63,11 @@ RESULT_PATTERNS = {
 # The three space components a run's total (variable-part) space breaks
 # down into -- used both for the CSV columns above and for the percentage
 # breakdown table.
-SPACE_COMPONENTS = ["consensus_vec_bits", "raw_insertion_vec_bits", "select_structure_bits"]
+SPACE_COMPONENTS = [
+    "consensus_vec_bits",
+    "raw_insertion_vec_bits",
+    "select_structure_bits",
+]
 
 
 def _annotate_timeouts(ax, entries: list[tuple[object, str]]):
@@ -94,14 +101,21 @@ def _annotate_timeouts(ax, entries: list[tuple[object, str]]):
             fontsize=7.5,
             fontweight="bold",
             color=color,
-            bbox=dict(boxstyle="round,pad=0.2", facecolor="white", edgecolor=color, alpha=0.85),
+            bbox=dict(
+                boxstyle="round,pad=0.2", facecolor="white", edgecolor=color, alpha=0.85
+            ),
         )
 
 
 def _typst_escape(text: str) -> str:
     """Escapes markup-significant characters so arbitrary cell text is
     always rendered literally in Typst content mode."""
-    return text.replace("\\", "\\\\").replace("_", "\\_").replace("*", "\\*").replace("#", "\\#")
+    return (
+        text.replace("\\", "\\\\")
+        .replace("_", "\\_")
+        .replace("*", "\\*")
+        .replace("#", "\\#")
+    )
 
 
 def write_typst_table(df: pd.DataFrame, id_cols: list[str], out_path: Path):
@@ -114,26 +128,46 @@ def write_typst_table(df: pd.DataFrame, id_cols: list[str], out_path: Path):
         return
 
     total = df[SPACE_COMPONENTS].sum(axis=1)
+    entropy = df["entropy_per_key"] * df["num_keys"]
+    assert np.isclose(entropy.iloc[0], entropy).all()
+    entropy = entropy.iloc[0]
+    print(f"entropy: {entropy}")
     table = df[[c for c in id_cols if c in df.columns]].copy()
     for col in SPACE_COMPONENTS:
         table[col] = df[col].astype("Int64")
         table[col.removesuffix("_bits") + "_%"] = (df[col] / total * 100).round(2)
+        table[col.removesuffix("_bits") + "_rel_to_entopy_%"] = (
+            df[col] / entropy * 100
+        ).round(2)
 
     def cell(v) -> str:
         return "" if pd.isna(v) else _typst_escape(str(v))
 
-    header_cells = ", ".join(f"[*{_typst_escape(c)}*]" for c in table.columns)
+    # Headers get underscores turned into spaces (rather than a hardcoded
+    # \n) so Typst can wrap them at natural word breaks on its own, once
+    # the column is narrower than the header's single-line width.
+    header_cells = ", ".join(
+        f"[*{_typst_escape(c.replace('_', ' '))}*]" for c in table.columns
+    )
     row_lines = [
         ", ".join(f"[{cell(v)}]" for v in row) for row in table.itertuples(index=False)
     ]
 
+    # Compute the per-column width from the actual column count so the
+    # table always spans exactly the usable page width, regardless of how
+    # many columns this particular mode/id_cols combination produces.
+    margin_cm = 1.2
+    page_width_cm = 29.7  # A4 landscape width
+    usable_width_cm = page_width_cm - 2 * margin_cm
+    col_width_cm = usable_width_cm / len(table.columns)
+
     parts = [
-        '#set page(paper: "a4", flipped: true, margin: 1.5cm)',
+        f'#set page(paper: "a4", flipped: true, margin: {margin_cm}cm)',
         "#set text(size: 8pt)",
         "= Space breakdown",
         "",
         "#table(",
-        f"  columns: {len(table.columns)} * (auto,),",
+        f"  columns: {len(table.columns)} * ({col_width_cm:.3f}cm,),",
         "  align: center,",
         f"  {header_cells},",
         *(f"  {line}," for line in row_lines),
@@ -293,7 +327,9 @@ def plot_tradeoff(
     if categorical:
         cmap = plt.get_cmap("tab10")
         timeout_entries = []
-        categories = sorted(set(df[color_col].unique()) | set((timed_out_by_category or {}).keys()))
+        categories = sorted(
+            set(df[color_col].unique()) | set((timed_out_by_category or {}).keys())
+        )
         for i, category in enumerate(categories):
             subset = df[df[color_col] == category]
             color = cmap(i % 10)
@@ -315,21 +351,47 @@ def plot_tradeoff(
                 swept_values = subset[category]
                 min_row = subset.loc[swept_values.idxmin()]
                 max_row = subset.loc[swept_values.idxmax()]
-                ax.scatter(min_row["hash_evaluations"], min_row["space_overhead"], color=color, marker="v", s=110, zorder=4)
-                ax.scatter(max_row["hash_evaluations"], max_row["space_overhead"], color=color, marker="^", s=110, zorder=4)
+                ax.scatter(
+                    min_row["hash_evaluations"],
+                    min_row["space_overhead"],
+                    color=color,
+                    marker="v",
+                    s=110,
+                    zorder=4,
+                )
+                ax.scatter(
+                    max_row["hash_evaluations"],
+                    max_row["space_overhead"],
+                    color=color,
+                    marker="^",
+                    s=110,
+                    zorder=4,
+                )
 
-            if baseline is not None and category in baseline and category in subset.columns:
+            if (
+                baseline is not None
+                and category in baseline
+                and category in subset.columns
+            ):
                 base_rows = subset[subset[category] == baseline[category]]
                 if not base_rows.empty:
                     base_row = base_rows.iloc[0]
                     ax.scatter(
-                        base_row["hash_evaluations"], base_row["space_overhead"], color=color, marker="s", s=90, zorder=4
+                        base_row["hash_evaluations"],
+                        base_row["space_overhead"],
+                        color=color,
+                        marker="s",
+                        s=90,
+                        zorder=4,
                     )
 
             timed_out_values = sorted((timed_out_by_category or {}).get(category, []))
             if timed_out_values:
                 timeout_entries.append(
-                    (color, f"{category}={','.join(f'{v:g}' for v in timed_out_values)}")
+                    (
+                        color,
+                        f"{category}={','.join(f'{v:g}' for v in timed_out_values)}",
+                    )
                 )
 
         param_legend = ax.legend(title=color_label, loc="upper right")
@@ -339,14 +401,34 @@ def plot_tradeoff(
         # b drives point color (shared colormap/scale across markers below);
         # marker shape is one symbol per (beta_scale, eps_scale) combo, so
         # all three swept dimensions are visible in one scatter.
-        markers = ["o", "s", "^", "v", "D", "P", "X", "*", "h", "8", "<", ">", "p", "H", "d"]
+        markers = [
+            "o",
+            "s",
+            "^",
+            "v",
+            "D",
+            "P",
+            "X",
+            "*",
+            "h",
+            "8",
+            "<",
+            ">",
+            "p",
+            "H",
+            "d",
+        ]
         combos = sorted(
-            df[["beta_scale", "eps_scale"]].drop_duplicates().itertuples(index=False, name=None)
+            df[["beta_scale", "eps_scale"]]
+            .drop_duplicates()
+            .itertuples(index=False, name=None)
         )
         vmin, vmax = df[color_col].min(), df[color_col].max()
         scatter = None
         for i, (beta_scale, eps_scale) in enumerate(combos):
-            subset = df[(df["beta_scale"] == beta_scale) & (df["eps_scale"] == eps_scale)]
+            subset = df[
+                (df["beta_scale"] == beta_scale) & (df["eps_scale"] == eps_scale)
+            ]
             scatter = ax.scatter(
                 subset["hash_evaluations"],
                 subset["space_overhead"],
@@ -362,14 +444,18 @@ def plot_tradeoff(
             )
         fig.colorbar(scatter, label=color_label)
         combo_legend = ax.legend(
-            title="(beta_scale, eps_scale)", loc="upper right", fontsize=7, title_fontsize=7
+            title="(beta_scale, eps_scale)",
+            loc="upper right",
+            fontsize=7,
+            title_fontsize=7,
         )
         ax.add_artist(combo_legend)
 
         if timed_out:
             shown = timed_out[:5]
             lines = [
-                "b={b} beta_scale={beta_scale} eps_scale={eps_scale}".format(**p) for p in shown
+                "b={b} beta_scale={beta_scale} eps_scale={eps_scale}".format(**p)
+                for p in shown
             ]
             if len(timed_out) > len(shown):
                 lines.append(f"... and {len(timed_out) - len(shown)} more")
@@ -386,13 +472,25 @@ def plot_tradeoff(
     )
 
     marker_handles = [
-        Line2D([], [], color="red", marker="*", linestyle="", markersize=13, label="best overhead"),
+        Line2D(
+            [],
+            [],
+            color="red",
+            marker="*",
+            linestyle="",
+            markersize=13,
+            label="best overhead",
+        ),
     ]
     if categorical:
         marker_handles += [
             Line2D([], [], color="black", marker="s", linestyle="", label="baseline"),
-            Line2D([], [], color="black", marker="v", linestyle="", label="smallest value"),
-            Line2D([], [], color="black", marker="^", linestyle="", label="largest value"),
+            Line2D(
+                [], [], color="black", marker="v", linestyle="", label="smallest value"
+            ),
+            Line2D(
+                [], [], color="black", marker="^", linestyle="", label="largest value"
+            ),
         ]
     ax.legend(handles=marker_handles, loc="lower left")
 
@@ -436,7 +534,8 @@ def plot_b_curve(
     timeout_entries = []
     for i, (curve_type, curve_value) in enumerate(curve_keys):
         subset = combined[
-            (combined["curve_type"] == curve_type) & (combined["curve_value"] == curve_value)
+            (combined["curve_type"] == curve_type)
+            & (combined["curve_value"] == curve_value)
         ].sort_values("b")
         color = cmap(i % 10)
         linestyle = "-" if curve_type == "beta_scale" else "--"
@@ -453,26 +552,60 @@ def plot_b_curve(
         if not subset.empty:
             min_row = subset.loc[subset["b"].idxmin()]
             max_row = subset.loc[subset["b"].idxmax()]
-            ax.scatter(min_row["hash_evaluations"], min_row["space_overhead"], color=color, marker="v", s=110, zorder=4)
-            ax.scatter(max_row["hash_evaluations"], max_row["space_overhead"], color=color, marker="^", s=110, zorder=4)
+            ax.scatter(
+                min_row["hash_evaluations"],
+                min_row["space_overhead"],
+                color=color,
+                marker="v",
+                s=110,
+                zorder=4,
+            )
+            ax.scatter(
+                max_row["hash_evaluations"],
+                max_row["space_overhead"],
+                color=color,
+                marker="^",
+                s=110,
+                zorder=4,
+            )
 
         timed_out_bs = sorted(timeouts_by_curve.get((curve_type, curve_value), []))
         if timed_out_bs:
             timeout_entries.append(
-                (color, f"{curve_type}={curve_value:g}: b={','.join(f'{b:g}' for b in timed_out_bs)}")
+                (
+                    color,
+                    f"{curve_type}={curve_value:g}: b={','.join(f'{b:g}' for b in timed_out_bs)}",
+                )
             )
 
     curve_legend = ax.legend(
-        title="curve (solid=beta_scale, dashed=eps_scale)", loc="upper right", fontsize=8
+        title="curve (solid=beta_scale, dashed=eps_scale)",
+        loc="upper right",
+        fontsize=8,
     )
     ax.add_artist(curve_legend)
     _annotate_timeouts(ax, timeout_entries)
 
     best = combined.loc[combined["space_overhead"].idxmin()]
-    ax.scatter([best["hash_evaluations"]], [best["space_overhead"]], color="red", marker="*", s=250, zorder=5)
+    ax.scatter(
+        [best["hash_evaluations"]],
+        [best["space_overhead"]],
+        color="red",
+        marker="*",
+        s=250,
+        zorder=5,
+    )
 
     marker_handles = [
-        Line2D([], [], color="red", marker="*", linestyle="", markersize=13, label="best overhead"),
+        Line2D(
+            [],
+            [],
+            color="red",
+            marker="*",
+            linestyle="",
+            markersize=13,
+            label="best overhead",
+        ),
         Line2D([], [], color="black", marker="v", linestyle="", label="smallest b"),
         Line2D([], [], color="black", marker="^", linestyle="", label="largest b"),
     ]
