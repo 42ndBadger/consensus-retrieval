@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use consensus_retrieval::hasher::RetrievalHasher;
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use fxhash::FxBuildHasher;
 use rand::random;
 
 fn hash(c: &mut Criterion) {
@@ -13,8 +12,6 @@ fn hash(c: &mut Criterion) {
         987213987219837321,
         !1298372198372121322,
     );
-    let state = FxBuildHasher::new();
-    // let state = fxhash::FxBuildHasher::new();
     let mut probs = HashMap::with_hasher(state.clone());
     probs.extend(probabilities.iter().map(|(k, v)| (k, *v)));
     let hasher = RetrievalHasher::<u32, _, _>::new_with_hasher(&probs, state).expect("valid probs");

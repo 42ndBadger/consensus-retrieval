@@ -21,7 +21,6 @@ fn query(c: &mut Criterion) {
         987213987219837321,
         !1298372198372121322,
     );
-    let state = fxhash::FxBuildHasher::new();
 
     let retrieval = ConsensusRetrieval::new_with_parameters(&kv, params, state);
     println!(

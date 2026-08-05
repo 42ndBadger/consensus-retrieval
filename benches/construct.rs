@@ -22,8 +22,7 @@ fn construct(c: &mut Criterion) {
         987213987219837321,
         !1298372198372121322,
     );
-    // let create_hasher = || ahash::RandomState::new();
-    let create_hasher = || fxhash::FxBuildHasher::new();
+    let create_hasher = || ahash::RandomState::new();
 
     // let fixed_hasher = create_hasher();
     // c.bench_function("construct_uniform_3_1000", |b| {

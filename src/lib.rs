@@ -4,8 +4,6 @@ use std::{
     hash::{BuildHasher, Hash},
 };
 
-use fxhash::FxBuildHasher;
-
 use crate::{
     hasher::{HashCode, RetrievalHasher},
     insertion_vec::InsertionVec,
@@ -19,7 +17,7 @@ pub mod hasher;
 mod insertion_vec;
 pub mod parameters;
 
-pub struct ConsensusRetrieval<K: Hash, V: Clone + Hash + Eq, H: BuildHasher = FxBuildHasher>
+pub struct ConsensusRetrieval<K: Hash, V: Clone + Hash + Eq, H: BuildHasher = ahash::RandomState>
 where
     H::Hasher: Clone,
 {
@@ -34,7 +32,7 @@ type Probabilities<'a, V, S> = HashMap<&'a V, f64, S>;
 
 impl<K: Hash, V: Clone + Hash + Eq + Debug> ConsensusRetrieval<K, V> {
     pub fn new_random(kv: &HashMap<K, V>, b: usize) -> Self {
-        Self::new_with_hasher(kv, b, FxBuildHasher::new())
+        Self::new_with_hasher(kv, b, ahash::RandomState::new())
     }
 }
 

@@ -1,7 +1,6 @@
 use std::{collections::HashMap, time::Instant};
 
 use consensus_retrieval::{ConsensusRetrieval, parameters::Parameters};
-use fxhash::FxBuildHasher;
 use rand::{RngExt, SeedableRng, rngs::StdRng};
 
 fn main() {
@@ -23,7 +22,6 @@ fn main() {
         987213987219837321,
         !1298372198372121322,
     );
-    let hasher = FxBuildHasher::new();
     let retrieval = ConsensusRetrieval::new_with_parameters(&kv, params, hasher);
     let took = start.elapsed();
     println!("construction took {took:?}, {:?} per key", took / n);
