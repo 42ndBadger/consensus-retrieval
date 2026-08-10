@@ -122,7 +122,7 @@ impl ConsensusVector {
         // `size_of::<Self>()` already covers `bitvec`'s own shallow (stack)
         // footprint (and `hash_evaluations`); add only its heap-allocated
         // backing storage on top.
-        size_of::<Self>() + size_of_val(&self.bitvec.as_raw_slice())
+        size_of::<Self>() + size_of_val(self.bitvec.as_raw_slice())
     }
 
     pub fn variable_part_bit_size(&self) -> usize {
