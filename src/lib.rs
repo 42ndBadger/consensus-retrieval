@@ -14,7 +14,7 @@ mod alias;
 mod consensus;
 pub mod data_gen;
 pub mod hasher;
-mod insertion_vec;
+pub mod insertion_vec;
 pub mod parameters;
 
 pub struct ConsensusRetrieval<K: Hash, V: Clone + Hash + Eq, H: BuildHasher = ahash::RandomState>
@@ -142,7 +142,7 @@ where
     }
 }
 
-fn calculate_frequencies<K: Hash, V: Clone + Hash + Eq, S: BuildHasher>(
+pub fn calculate_frequencies<K: Hash, V: Clone + Hash + Eq, S: BuildHasher>(
     kv: &HashMap<K, V, impl BuildHasher>,
     hasher: S,
 ) -> Probabilities<'_, V, S> {
@@ -161,26 +161,22 @@ fn calculate_frequencies<K: Hash, V: Clone + Hash + Eq, S: BuildHasher>(
 }
 
 /// Key, Value, Group, Task in group
-pub fn export_statistics<'a, K: 'a + Hash, V: 'a + Clone + Hash + Eq + Debug, H: BuildHasher>(
-    retrieval: &ConsensusRetrieval<K, V, H>,
-    kv: impl Iterator<Item = (&'a K, &'a V)>,
+pub fn export_statistics<'a, K: 'a + Hash, V: 'a + Clone + Hash + Eq + Debug, H: 'a + BuildHasher>(
+    insertion_vec: &'a InsertionVec,
+    hasher: &'a RetrievalHasher<K, V, H>,
+    kv: impl Iterator<Item = (&'a K, &'a V)> + 'a,
 ) -> impl Iterator<Item = (&'a K, &'a V, usize, usize)>
 where
     H::Hasher: Clone,
 {
     kv.map(|(k, v)| {
-        let hash_code = retrieval.hasher.hash_to_hash_code(k);
-        let group = retrieval
-            .hasher
-            .hash_to_group(hash_code, retrieval.insertion_vec.num_groups());
+        let hash_code = hasher.hash_to_hash_code(k);
+        let group = hasher.hash_to_group(hash_code, insertion_vec.num_groups());
         (
             k,
             v,
             group,
-            retrieval.hasher.hash_to_task(
-                hash_code,
-                retrieval.insertion_vec.group_bounds(group).unwrap().width,
-            ),
+            hasher.hash_to_task(hash_code, insertion_vec.group_bounds(group).unwrap().width),
         )
     })
 }

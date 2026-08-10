@@ -1,12 +1,16 @@
-use std::collections::HashMap;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 use std::fs;
 use std::hash::Hash;
+use std::{collections::HashMap, hash::BuildHasher};
 
 use clap::Parser;
+use consensus_retrieval::export_statistics;
 use rand_distr::Distribution as _;
 
-use consensus_retrieval::{data_gen, parameters::Parameters};
+use consensus_retrieval::{
+    calculate_frequencies, data_gen, hasher::RetrievalHasher, insertion_vec::InsertionVec,
+    parameters::Parameters,
+};
 
 #[derive(clap::Parser)]
 struct Cli {
@@ -52,6 +56,10 @@ struct Cli {
     /// file, so they can be reloaded later with --file.
     #[arg(long)]
     output: Option<String>,
+
+    /// Only print statistics about the generated data, not the data itself.
+    #[arg(long, default_value = "false")]
+    stats_only: bool,
 }
 
 /// Where the (key, value) data comes from: read directly from a file, or
@@ -94,10 +102,10 @@ fn read_kv_file(path: &str) -> HashMap<String, u64> {
 
 /// Writes `key value` pairs, one per line, in the same format `read_kv_file`
 /// reads, so generated data can be saved and reloaded via `--file` later.
-fn write_kv_file(path: &str, kv: &HashMap<u64, u64>) {
+fn write_kv_file(path: &str, kv: &HashMap<String, u64>) {
     let mut contents = String::with_capacity(kv.len() * 8);
     for (key, value) in kv {
-        contents.push_str(&key.to_string());
+        contents.push_str(&key);
         contents.push(' ');
         contents.push_str(&value.to_string());
         contents.push('\n');
@@ -219,26 +227,35 @@ fn main() {
         "--output can only be used together with --distribution"
     );
 
-    match Input::from_cli(cli.file, cli.distribution) {
-        Input::File(path) => {
-            let params = build_params(cli.b, cli.beta_scale, cli.eps_scale);
-            build_and_report(&read_kv_file(&path), params);
-        }
+    let kv = match Input::from_cli(cli.file, cli.distribution) {
+        Input::File(path) => read_kv_file(&path),
         Input::Distribution(distribution) => {
             let n = cli
                 .n
                 .expect("clap guarantees -n is set when --distribution is used");
-            let kv = distribution.generate(n);
+            let kv = distribution
+                .generate(n)
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v))
+                .collect();
             if let Some(path) = &cli.output {
                 // Just generating data to save for later: skip building the
                 // (potentially expensive) retrieval structure entirely.
                 write_kv_file(path, &kv);
                 return;
             }
-            let params = build_params(cli.b, cli.beta_scale, cli.eps_scale);
-            build_and_report(&kv, params);
+            kv
         }
+    };
+
+    let params = build_params(cli.b, cli.beta_scale, cli.eps_scale);
+
+    if cli.stats_only {
+        print_stats(&kv, params);
+        return;
     }
+
+    build_and_report(&kv, params);
 }
 
 /// Unwraps the three "only needed when actually building" args. clap
@@ -274,4 +291,22 @@ fn build_and_report<K: Hash, V: Clone + Hash + Eq + Debug>(kv: &HashMap<K, V>, p
         cr.consensus_vec_bit_size(),
         cr.hash_evaluations()
     );
+}
+
+fn print_stats<K: Hash + Display, V: Clone + Hash + Eq + Debug + Display>(
+    kv: &HashMap<K, V, impl BuildHasher>,
+    params: Parameters,
+) {
+    let probabilities = &calculate_frequencies(kv, ahash::RandomState::new());
+    let hasher =
+        &RetrievalHasher::new_with_hasher(probabilities, ahash::RandomState::new()).unwrap();
+    let kv_new = &hasher
+        .convert_to_hash_codes(kv)
+        .expect("no duplicate hash codes");
+    let insertion_vec = InsertionVec::new(kv_new, probabilities, params, hasher);
+
+    println!("key, value, group, task");
+    for (key, value, group, task) in export_statistics(&insertion_vec, hasher, kv.iter()) {
+        println!("{}, {}, {}, {}", key, value, group, task);
+    }
 }

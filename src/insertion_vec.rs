@@ -53,7 +53,7 @@ impl InsertionVec {
         }
 
         let max_keys_per_group: usize = kv_per_group.iter().map(Vec::len).max().unwrap();
-        println!("max key per group {}", max_keys_per_group);
+        // println!("max key per group {}", max_keys_per_group);
 
         // l_right = -log2(q_right); boundary q_right = 1 (vacuous success) => l = 0
         let mut l_right = 0f64;
