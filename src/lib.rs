@@ -160,6 +160,31 @@ fn calculate_frequencies<K: Hash, V: Clone + Hash + Eq, S: BuildHasher>(
     map
 }
 
+/// Key, Value, Group, Task in group
+pub fn export_statistics<'a, K: 'a + Hash, V: 'a + Clone + Hash + Eq + Debug, H: BuildHasher>(
+    retrieval: &ConsensusRetrieval<K, V, H>,
+    kv: impl Iterator<Item = (&'a K, &'a V)>,
+) -> impl Iterator<Item = (&'a K, &'a V, usize, usize)>
+where
+    H::Hasher: Clone,
+{
+    kv.map(|(k, v)| {
+        let hash_code = retrieval.hasher.hash_to_hash_code(k);
+        let group = retrieval
+            .hasher
+            .hash_to_group(hash_code, retrieval.insertion_vec.num_groups());
+        (
+            k,
+            v,
+            group,
+            retrieval.hasher.hash_to_task(
+                hash_code,
+                retrieval.insertion_vec.group_bounds(group).unwrap().width,
+            ),
+        )
+    })
+}
+
 #[cfg(test)]
 mod test {
     use rand::random_range;
