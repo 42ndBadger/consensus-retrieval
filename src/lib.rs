@@ -58,7 +58,7 @@ where
         }
         let frequencies = calculate_frequencies(kv, hasher_bulder.clone());
         let hasher = RetrievalHasher::new_with_hasher(&frequencies, hasher_bulder).unwrap();
-        let kv: HashMap<HashCode, V> = hasher.convert_to_hash_codes(kv).expect("not duplicates");
+        let kv: HashMap<HashCode, V, H> = hasher.convert_to_hash_codes(kv).expect("not duplicates");
 
         dbg!(&params);
         let insertion = InsertionVec::new(&kv, &frequencies, params, &hasher);

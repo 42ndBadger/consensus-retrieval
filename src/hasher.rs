@@ -67,11 +67,16 @@ where
 
     /// Also checks wheter no two keys have the same hash code.
     /// Returns `None` if that's the case.
-    pub fn convert_to_hash_codes(
-        &self,
-        kv: &HashMap<K, V, impl BuildHasher>,
-    ) -> Option<HashMap<HashCode, V>> {
-        let mut result = HashMap::with_capacity(kv.len());
+    ///
+    /// Built with `self.build_hasher` (rather than a default-random one) so
+    /// the result's iteration order — which later summation order (e.g.
+    /// `InsertionVec`'s per-task difficulty sums) can depend on through
+    /// floating-point rounding — is reproducible given a seeded `H`.
+    pub fn convert_to_hash_codes(&self, kv: &HashMap<K, V, impl BuildHasher>) -> Option<HashMap<HashCode, V, H>>
+    where
+        H: Clone,
+    {
+        let mut result = HashMap::with_capacity_and_hasher(kv.len(), self.build_hasher.clone());
         for (k, v) in kv {
             let code = self.hash_to_hash_code(k);
             if result.insert(code, v.clone()).is_some() {

@@ -269,11 +269,11 @@ fn main() {
     let params = build_params(cli.b, cli.beta_scale, cli.eps_scale);
 
     if cli.stats_only {
-        print_stats(&kv, params);
+        print_stats(&kv, params, hasher);
         return;
     }
 
-    build_and_report(&kv, params);
+    build_and_report(&kv, params, hasher);
 }
 
 /// Unwraps the three "only needed when actually building" args. clap
@@ -290,12 +290,9 @@ fn build_params(b: Option<usize>, beta_scale: Option<f64>, eps_scale: Option<f64
 fn build_and_report<K: Hash, V: Clone + Hash + Eq + Debug>(
     kv: &HashMap<K, V, impl BuildHasher>,
     params: Parameters,
+    hasher_builder: RandomState,
 ) {
-    let cr = consensus_retrieval::ConsensusRetrieval::new_with_parameters(
-        kv,
-        params,
-        ahash::RandomState::with_seed(123),
-    );
+    let cr = consensus_retrieval::ConsensusRetrieval::new_with_parameters(kv, params, hasher_builder);
 
     let raw_insertion_vec_bits = cr.raw_insertion_vec_bit_size();
     let select_structure_bits = cr.insertion_vec_bit_size() - raw_insertion_vec_bits;
@@ -317,21 +314,36 @@ fn build_and_report<K: Hash, V: Clone + Hash + Eq + Debug>(
 fn print_stats<K: Hash + Display, V: Clone + Hash + Eq + Debug + Display>(
     kv: &HashMap<K, V, impl BuildHasher>,
     params: Parameters,
+    hasher_builder: RandomState,
 ) {
-    let probabilities = &calculate_frequencies(kv, ahash::RandomState::new());
-    let hasher =
-        &RetrievalHasher::new_with_hasher(probabilities, ahash::RandomState::new()).unwrap();
+    // Reuses the same seeded `RandomState` `main` built via
+    // `data_gen::seeded_state` (rather than `ahash::RandomState::new()` or
+    // `::with_seed()`, both of which draw in per-process randomness — see
+    // that function's doc comment) so `--seed` actually makes the
+    // group/task assignment reproducible across runs, as documented.
+    let probabilities = &calculate_frequencies(kv, hasher_builder.clone());
+    let hasher = &RetrievalHasher::new_with_hasher(probabilities, hasher_builder).unwrap();
     let kv_new = &hasher
         .convert_to_hash_codes(kv)
         .expect("no duplicate hash codes");
     let insertion_vec = InsertionVec::new(kv_new, probabilities, params, hasher);
 
+    let group_widths: Vec<usize> = (0..insertion_vec.num_groups())
+        .map(|g| insertion_vec.group_bounds(g).unwrap().width)
+        .collect();
+    let group_widths_json = group_widths
+        .iter()
+        .map(usize::to_string)
+        .collect::<Vec<_>>()
+        .join(", ");
+
     println!("===OUTPUT===");
     println!(
-        r#"{{"tasks": {}, "bitvec_size": {}, "total_insertion_vec_size": {}}}"#,
+        r#"{{"tasks": {}, "bitvec_size": {}, "total_insertion_vec_size": {}, "group_widths": [{}]}}"#,
         insertion_vec.total_num_tasks(),
         insertion_vec.bitvec_bits(),
-        insertion_vec.variable_part_bit_size()
+        insertion_vec.variable_part_bit_size(),
+        group_widths_json
     );
     println!("key, value, group, task");
     for (key, value, group, task) in export_statistics(&insertion_vec, hasher, kv.iter()) {
