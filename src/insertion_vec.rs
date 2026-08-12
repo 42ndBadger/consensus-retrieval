@@ -169,6 +169,10 @@ impl InsertionVec {
             + size_of_val(β)
     }
 
+    pub fn bitvec_bits(&self) -> usize {
+        self.select.len()
+    }
+
     pub fn variable_part_bit_size(&self) -> usize {
         self.select.mem_size(SizeFlags::default()) * u8::BITS as usize
     }

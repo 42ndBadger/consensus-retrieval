@@ -305,6 +305,13 @@ fn print_stats<K: Hash + Display, V: Clone + Hash + Eq + Debug + Display>(
         .expect("no duplicate hash codes");
     let insertion_vec = InsertionVec::new(kv_new, probabilities, params, hasher);
 
+    println!("===OUTPUT===");
+    println!(
+        r#"{{"tasks": {}, "bitvec_size": {}, "total_insertion_vec_size": {}}}"#,
+        insertion_vec.total_num_tasks(),
+        insertion_vec.bitvec_bits(),
+        insertion_vec.variable_part_bit_size()
+    );
     println!("key, value, group, task");
     for (key, value, group, task) in export_statistics(&insertion_vec, hasher, kv.iter()) {
         println!("{}, {}, {}, {}", key, value, group, task);
