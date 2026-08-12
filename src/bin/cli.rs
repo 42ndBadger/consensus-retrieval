@@ -3,8 +3,10 @@ use std::fs;
 use std::hash::Hash;
 use std::{collections::HashMap, hash::BuildHasher};
 
+use ahash::RandomState;
 use clap::Parser;
 use consensus_retrieval::export_statistics;
+use rand::rngs::StdRng;
 use rand_distr::Distribution as _;
 
 use consensus_retrieval::{
@@ -60,6 +62,10 @@ struct Cli {
     /// Only print statistics about the generated data, not the data itself.
     #[arg(long, default_value = "false")]
     stats_only: bool,
+
+    /// Seed for random data generation used. Defaults to a random seed.
+    #[arg(long)]
+    seed: Option<u64>,
 }
 
 /// Where the (key, value) data comes from: read directly from a file, or
@@ -82,30 +88,28 @@ impl Input {
 }
 
 /// Reads `key value` pairs, one per line, separated by a space.
-fn read_kv_file(path: &str) -> HashMap<String, u64> {
+fn read_kv_file(path: &str, hasher: &RandomState) -> HashMap<String, u64, RandomState> {
     let contents = fs::read_to_string(path).unwrap_or_else(|e| panic!("can't read {path:?}: {e}"));
-    contents
-        .lines()
-        .filter(|line| !line.trim().is_empty())
-        .map(|line| {
-            let (key, value) = line
-                .split_once(' ')
-                .unwrap_or_else(|| panic!("expected `key value`, got {line:?}"));
-            let value: u64 = value
-                .trim()
-                .parse()
-                .unwrap_or_else(|_| panic!("invalid value {value:?}"));
-            (key.to_string(), value)
-        })
-        .collect()
+    let mut kv: HashMap<String, u64, RandomState> = HashMap::with_hasher(hasher.clone());
+    for line in contents.lines().filter(|line| !line.trim().is_empty()) {
+        let (key, value) = line
+            .split_once(' ')
+            .unwrap_or_else(|| panic!("expected `key value`, got {line:?}"));
+        let value: u64 = value
+            .trim()
+            .parse()
+            .unwrap_or_else(|_| panic!("invalid value {value:?}"));
+        kv.insert(key.to_string(), value);
+    }
+    kv
 }
 
 /// Writes `key value` pairs, one per line, in the same format `read_kv_file`
 /// reads, so generated data can be saved and reloaded via `--file` later.
-fn write_kv_file(path: &str, kv: &HashMap<String, u64>) {
+fn write_kv_file(path: &str, kv: &HashMap<String, u64, RandomState>) {
     let mut contents = String::with_capacity(kv.len() * 8);
     for (key, value) in kv {
-        contents.push_str(&key);
+        contents.push_str(key);
         contents.push(' ');
         contents.push_str(&value.to_string());
         contents.push('\n');
@@ -181,40 +185,53 @@ impl Distribution {
     /// Generates `n` (key, value) pairs by sampling values from this
     /// distribution. `uniform`/`multinomial` build an explicit weight table
     /// and go through our own alias-table sampling; the others are true
-    /// probability distributions from `rand_distr`, sampled directly via a
-    /// real RNG through `data_gen::from_distribution`.
-    fn generate(self, n: usize) -> HashMap<u64, u64> {
+    /// probability distributions from `rand_distr`, sampled directly through
+    /// `rng` via `data_gen::from_distribution`.
+    fn generate(
+        self,
+        n: usize,
+        hasher: &RandomState,
+        rng: StdRng,
+    ) -> HashMap<u64, u64, RandomState> {
         match self {
             Distribution::Uniform { count } => {
                 let weight = 1.0 / count as f64;
-                let weights: HashMap<u64, f64> = (0..count as u64).map(|i| (i, weight)).collect();
-                let dist: HashMap<&u64, f64> = weights.iter().map(|(k, v)| (k, *v)).collect();
-                data_gen::from_value_distribution(n, &dist)
+                let mut weights: HashMap<u64, f64, RandomState> =
+                    HashMap::with_hasher(hasher.clone());
+                for i in 0..count as u64 {
+                    weights.insert(i, weight);
+                }
+                let mut dist: HashMap<&u64, f64, RandomState> =
+                    HashMap::with_hasher(hasher.clone());
+                dist.extend(weights.iter().map(|(k, v)| (k, *v)));
+                data_gen::from_value_distribution(n, hasher, &dist)
             }
             Distribution::Multinomial { weights } => {
-                let weights: HashMap<u64, f64> = weights
-                    .into_iter()
-                    .enumerate()
-                    .map(|(i, w)| (i as u64, w))
-                    .collect();
-                let dist: HashMap<&u64, f64> = weights.iter().map(|(k, v)| (k, *v)).collect();
-                data_gen::from_value_distribution(n, &dist)
+                let mut weight_map: HashMap<u64, f64, RandomState> =
+                    HashMap::with_hasher(hasher.clone());
+                for (i, w) in weights.into_iter().enumerate() {
+                    weight_map.insert(i as u64, w);
+                }
+                let mut dist: HashMap<&u64, f64, RandomState> =
+                    HashMap::with_hasher(hasher.clone());
+                dist.extend(weight_map.iter().map(|(k, v)| (k, *v)));
+                data_gen::from_value_distribution(n, hasher, &dist)
             }
             Distribution::Binomial { trials, p } => {
                 let binomial = rand_distr::Binomial::new(trials, p)
                     .unwrap_or_else(|e| panic!("invalid binomial distribution: {e}"));
-                data_gen::from_distribution(n, binomial)
+                data_gen::from_distribution(n, hasher, rng, binomial)
             }
             Distribution::Zipf { n: set_size, s } => {
                 let zipf = rand_distr::Zipf::new(set_size, s)
                     .unwrap_or_else(|e| panic!("invalid zipf distribution: {e}"))
                     .map(|rank: f64| rank as u64);
-                data_gen::from_distribution(n, zipf)
+                data_gen::from_distribution(n, hasher, rng, zipf)
             }
             Distribution::Geometric { p } => {
                 let geometric = rand_distr::Geometric::new(p)
                     .unwrap_or_else(|e| panic!("invalid geometric distribution: {e}"));
-                data_gen::from_distribution(n, geometric)
+                data_gen::from_distribution(n, hasher, rng, geometric)
             }
         }
     }
@@ -227,17 +244,18 @@ fn main() {
         "--output can only be used together with --distribution"
     );
 
+    let seed = cli.seed.unwrap_or_else(rand::random);
+    let (hasher, sampling_rng) = data_gen::seeded_state(seed);
+
     let kv = match Input::from_cli(cli.file, cli.distribution) {
-        Input::File(path) => read_kv_file(&path),
+        Input::File(path) => read_kv_file(&path, &hasher),
         Input::Distribution(distribution) => {
             let n = cli
                 .n
                 .expect("clap guarantees -n is set when --distribution is used");
-            let kv = distribution
-                .generate(n)
-                .into_iter()
-                .map(|(k, v)| (k.to_string(), v))
-                .collect();
+            let generated = distribution.generate(n, &hasher, sampling_rng);
+            let mut kv: HashMap<String, u64, RandomState> = HashMap::with_hasher(hasher.clone());
+            kv.extend(generated.into_iter().map(|(k, v)| (k.to_string(), v)));
             if let Some(path) = &cli.output {
                 // Just generating data to save for later: skip building the
                 // (potentially expensive) retrieval structure entirely.
@@ -269,7 +287,10 @@ fn build_params(b: Option<usize>, beta_scale: Option<f64>, eps_scale: Option<f64
     )
 }
 
-fn build_and_report<K: Hash, V: Clone + Hash + Eq + Debug>(kv: &HashMap<K, V>, params: Parameters) {
+fn build_and_report<K: Hash, V: Clone + Hash + Eq + Debug>(
+    kv: &HashMap<K, V, impl BuildHasher>,
+    params: Parameters,
+) {
     let cr = consensus_retrieval::ConsensusRetrieval::new_with_parameters(
         kv,
         params,
