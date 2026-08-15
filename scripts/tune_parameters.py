@@ -118,27 +118,63 @@ def _typst_escape(text: str) -> str:
     )
 
 
-def write_typst_table(df: pd.DataFrame, id_cols: list[str], out_path: Path):
+def write_typst_table(
+    df: pd.DataFrame,
+    id_cols: list[str],
+    out_path: Path,
+    timed_out_rows: list[dict] | None = None,
+):
     """Writes a Typst table with the space breakdown -- consensus vector /
     raw insertion vector / select structure, as a percentage of their total
     (the variable, input-size-scaling part of the structure) -- one row per
-    successful run -- then compiles it to a PDF alongside it."""
-    if df.empty:
+    successful run -- then compiles it to a PDF alongside it.
+
+    `timed_out_rows` are runs that hit the timeout instead of completing: each
+    dict gives whatever `id_cols` values are known for that run (unknown ones
+    are left blank), and every space-metric column is rendered as "timeout"
+    instead of a value, so a timed-out run stays visible in the table rather
+    than just disappearing."""
+    metric_cols = [
+        c
+        for col in SPACE_COMPONENTS
+        for c in (
+            col,
+            col.removesuffix("_bits") + "_%",
+            col.removesuffix("_bits") + "_rel_to_entopy_%",
+        )
+    ]
+
+    if df.empty and not timed_out_rows:
         print(f"no successful runs; not writing {out_path}", file=sys.stderr)
         return
 
-    total = df[SPACE_COMPONENTS].sum(axis=1)
-    entropy = df["entropy_per_key"] * df["num_keys"]
-    assert np.isclose(entropy.iloc[0], entropy).all()
-    entropy = entropy.iloc[0]
-    print(f"entropy: {entropy}")
-    table = df[[c for c in id_cols if c in df.columns]].copy()
-    for col in SPACE_COMPONENTS:
-        table[col] = df[col].astype("Int64")
-        table[col.removesuffix("_bits") + "_%"] = (df[col] / total * 100).round(2)
-        table[col.removesuffix("_bits") + "_rel_to_entopy_%"] = (
-            df[col] / entropy * 100
-        ).round(2)
+    if df.empty:
+        table = pd.DataFrame(columns=id_cols + metric_cols)
+    else:
+        total = df[SPACE_COMPONENTS].sum(axis=1)
+        entropy = df["entropy_per_key"] * df["num_keys"]
+        assert np.isclose(entropy.iloc[0], entropy).all()
+        entropy = entropy.iloc[0]
+        print(f"entropy: {entropy}")
+        table = df[[c for c in id_cols if c in df.columns]].copy()
+        for col in SPACE_COMPONENTS:
+            table[col] = df[col].astype("Int64")
+            table[col.removesuffix("_bits") + "_%"] = (df[col] / total * 100).round(2)
+            table[col.removesuffix("_bits") + "_rel_to_entopy_%"] = (
+                df[col] / entropy * 100
+            ).round(2)
+
+    if timed_out_rows:
+        timeout_df = pd.DataFrame(
+            [
+                {
+                    **{c: row.get(c) for c in id_cols},
+                    **{m: "timeout" for m in metric_cols},
+                }
+                for row in timed_out_rows
+            ]
+        )
+        table = pd.concat([table, timeout_df], ignore_index=True)
 
     def cell(v) -> str:
         return "" if pd.isna(v) else _typst_escape(str(v))
@@ -667,7 +703,17 @@ def run_b_curve(args):
     combined = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
     combined.to_csv(args.csv_out, index=False)
     print(f"wrote {args.csv_out}")
-    write_typst_table(combined, ["curve_type", "curve_value", "b"], args.table_out)
+    timed_out_rows = [
+        {"curve_type": curve_type, "curve_value": curve_value, "b": b}
+        for (curve_type, curve_value), bs in timeouts_by_curve.items()
+        for b in bs
+    ]
+    write_typst_table(
+        combined,
+        ["curve_type", "curve_value", "b"],
+        args.table_out,
+        timed_out_rows=timed_out_rows,
+    )
 
     total_timed_out = sum(len(v) for v in timeouts_by_curve.values())
     completed = len(combined)
@@ -700,7 +746,9 @@ def run_grid(args):
     )
     df.to_csv(args.csv_out, index=False)
     print(f"wrote {args.csv_out}")
-    write_typst_table(df, ["b", "beta_scale", "eps_scale"], args.table_out)
+    write_typst_table(
+        df, ["b", "beta_scale", "eps_scale"], args.table_out, timed_out_rows=timed_out
+    )
 
     total = len(df) + len(timed_out)
     print(f"{len(df)}/{total} runs completed, {len(timed_out)} timed out")
@@ -842,8 +890,16 @@ def main():
     )
     combined.to_csv(args.csv_out, index=False)
     print(f"wrote {args.csv_out}")
+    timed_out_rows = [
+        {"swept_param": name, **{**baseline, name: value}}
+        for name, (_df, timed_out) in sweeps.items()
+        for value in timed_out
+    ]
     write_typst_table(
-        combined, ["swept_param", "b", "beta_scale", "eps_scale"], args.table_out
+        combined,
+        ["swept_param", "b", "beta_scale", "eps_scale"],
+        args.table_out,
+        timed_out_rows=timed_out_rows,
     )
 
     total_timed_out = sum(len(timed_out) for _df, timed_out in sweeps.values())

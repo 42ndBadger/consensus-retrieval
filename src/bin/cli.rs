@@ -166,7 +166,8 @@ impl Distribution {
                 };
                 let n: f64 = n.parse().unwrap_or_else(|_| panic!("invalid n {n:?}"));
                 let s: f64 = s.parse().unwrap_or_else(|_| panic!("invalid s {s:?}"));
-                Distribution::Zipf { n, s }
+                Distribution::Zipf { n, s let mut rng = rand::rng();
+                    let dist = distr::}
             }
             "geometric" => {
                 let [p] = rest else {
