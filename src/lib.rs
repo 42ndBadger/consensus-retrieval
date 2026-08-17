@@ -142,15 +142,18 @@ where
     }
 }
 
-pub fn calculate_frequencies<K: Hash, V: Clone + Hash + Eq, S: BuildHasher>(
+pub fn calculate_frequencies<K: Hash, V: Clone + Hash + Eq, S: BuildHasher + Clone>(
     kv: &HashMap<K, V, impl BuildHasher>,
     hasher: S,
 ) -> Probabilities<'_, V, S> {
     let total_num = kv.len() as f64;
-    let num_vals = kv.values().fold(HashMap::<_, usize>::new(), |mut acc, v| {
-        *acc.entry(v).or_default() += 1;
-        acc
-    });
+    let num_vals = kv.values().fold(
+        HashMap::<_, usize, _>::with_hasher(hasher.clone()),
+        |mut acc, v| {
+            *acc.entry(v).or_default() += 1;
+            acc
+        },
+    );
     let mut map = HashMap::with_hasher(hasher);
     map.extend(
         num_vals
