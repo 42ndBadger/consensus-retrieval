@@ -19,14 +19,9 @@ struct Cli {
     /// Number of items to generate; only used with --distribution.
     #[arg(short, required_unless_present = "file")]
     n: Option<usize>,
-    /// Only needed when actually building the retrieval structure, i.e.
-    /// not when just generating data with --distribution --output.
-    #[arg(short, required_unless_present = "output")]
-    b: Option<usize>,
-    #[arg(long, required_unless_present = "output")]
-    beta_scale: Option<f64>,
-    #[arg(long, required_unless_present = "output")]
-    eps_scale: Option<f64>,
+
+    #[clap(flatten)]
+    algo_params: AlgoParams,
 
     /// Read `key value` pairs directly from a file (one pair per line,
     /// separated by a space), instead of generating them from a
@@ -66,6 +61,26 @@ struct Cli {
     /// Seed for random data generation used. Defaults to a random seed.
     #[arg(long)]
     seed: Option<u64>,
+}
+
+#[derive(Debug, Clone, clap::Args)]
+struct AlgoParams {
+    #[arg(short, required_unless_present = "output")]
+    b: Option<usize>,
+    #[arg(long, required_unless_present_any = ["output", "beta"])]
+    beta_scale: Option<f64>,
+    #[arg(long, required_unless_present_any = ["output", "eps"])]
+    eps_scale: Option<f64>,
+
+    #[arg(long, conflicts_with = "beta_scale")]
+    beta: Option<usize>,
+    // average group load in bits 
+    #[arg(long)]
+    avg_group_load: Option<f64>,
+    #[arg(long, conflicts_with = "eps_scale")]
+    eps: Option<f64>,
+    #[arg(long)]
+    maxdiff: Option<f64>,
 }
 
 /// Where the (key, value) data comes from: read directly from a file, or
@@ -267,7 +282,7 @@ fn main() {
         }
     };
 
-    let params = build_params(cli.b, cli.beta_scale, cli.eps_scale);
+    let params = build_params(&cli.algo_params);
 
     if cli.stats_only {
         print_stats(&kv, params, hasher);
@@ -280,12 +295,32 @@ fn main() {
 /// Unwraps the three "only needed when actually building" args. clap
 /// guarantees these are `Some` whenever this is reached, via
 /// `required_unless_present = "output"` on each of them.
-fn build_params(b: Option<usize>, beta_scale: Option<f64>, eps_scale: Option<f64>) -> Parameters {
-    Parameters::new_with_scales(
-        b.expect("clap guarantees -b is set when building"),
-        beta_scale.expect("clap guarantees --beta-scale is set when building"),
-        eps_scale.expect("clap guarantees --eps-scale is set when building"),
-    )
+fn build_params(param: &AlgoParams) -> Parameters {
+    let b = param.b.expect("clap guarantees -b is set when building");
+    let beta_scale = param
+        .beta_scale
+        .expect("clap guarantees --beta-scale is set when building");
+    let eps_scale = param
+        .eps_scale
+        .expect("clap guarantees --eps-scale is set when building");
+
+    let beta = param
+        .beta
+        .unwrap_or((f64::ceil(beta_scale * (b as f64).sqrt() * (b as f64).log2()) as usize).max(1));
+    let avg_group_load = param
+        .avg_group_load
+        .unwrap_or((b as f64 + beta as f64 / 2.) * (1. - eps_scale));
+    let max_diff = param
+        .maxdiff
+        .unwrap_or(-eps_scale.log2() + 3. * beta as f64);
+
+    Parameters {
+        avg_group_load,
+        inital_group_width: b,
+        insertion_increment: beta,
+        max_difficulty_of_task: max_diff,
+        max_difficulty_at_group_border: max_diff - beta as f64,
+    }
 }
 
 fn build_and_report<K: Hash, V: Clone + Hash + Eq + Debug>(
