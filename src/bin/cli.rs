@@ -74,7 +74,7 @@ struct AlgoParams {
 
     #[arg(long, conflicts_with = "beta_scale")]
     beta: Option<usize>,
-    // average group load in bits 
+    // average group load in bits
     #[arg(long)]
     avg_group_load: Option<f64>,
     #[arg(long, conflicts_with = "eps_scale")]
@@ -181,8 +181,7 @@ impl Distribution {
                 };
                 let n: f64 = n.parse().unwrap_or_else(|_| panic!("invalid n {n:?}"));
                 let s: f64 = s.parse().unwrap_or_else(|_| panic!("invalid s {s:?}"));
-                Distribution::Zipf { n, s let mut rng = rand::rng();
-                    let dist = distr::}
+                Distribution::Zipf { n, s }
             }
             "geometric" => {
                 let [p] = rest else {
@@ -328,7 +327,8 @@ fn build_and_report<K: Hash, V: Clone + Hash + Eq + Debug>(
     params: Parameters,
     hasher_builder: RandomState,
 ) {
-    let cr = consensus_retrieval::ConsensusRetrieval::new_with_parameters(kv, params, hasher_builder);
+    let cr =
+        consensus_retrieval::ConsensusRetrieval::new_with_parameters(kv, params, hasher_builder);
 
     let raw_insertion_vec_bits = cr.raw_insertion_vec_bit_size();
     let select_structure_bits = cr.insertion_vec_bit_size() - raw_insertion_vec_bits;
