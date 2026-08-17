@@ -299,7 +299,7 @@ fn build_params(param: &AlgoParams) -> Parameters {
 
     let eps = param
         .eps
-        .unwrap_or(param.eps_scale.unwrap() * 1. / (b as f64 + 1.));
+        .unwrap_or_else(|| param.eps_scale.unwrap() * 1. / (b as f64 + 1.));
 
     let beta = param.beta.unwrap_or_else(|| {
         (f64::ceil(param.beta_scale.unwrap() * (b as f64).sqrt() * (b as f64).log2()) as usize)
