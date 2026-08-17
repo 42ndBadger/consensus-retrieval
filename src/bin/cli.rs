@@ -296,22 +296,19 @@ fn main() {
 /// `required_unless_present = "output"` on each of them.
 fn build_params(param: &AlgoParams) -> Parameters {
     let b = param.b.expect("clap guarantees -b is set when building");
-    let beta_scale = param
-        .beta_scale
-        .expect("clap guarantees --beta-scale is set when building");
-    let eps_scale = param
-        .eps_scale
-        .expect("clap guarantees --eps-scale is set when building");
 
-    let beta = param
-        .beta
-        .unwrap_or((f64::ceil(beta_scale * (b as f64).sqrt() * (b as f64).log2()) as usize).max(1));
+    let eps = param
+        .eps
+        .unwrap_or(param.eps_scale.unwrap() * 1. / (b as f64 + 1.));
+
+    let beta = param.beta.unwrap_or(
+        (f64::ceil(param.beta_scale.unwrap() * (b as f64).sqrt() * (b as f64).log2()) as usize)
+            .max(1),
+    );
     let avg_group_load = param
         .avg_group_load
-        .unwrap_or((b as f64 + beta as f64 / 2.) * (1. - eps_scale));
-    let max_diff = param
-        .maxdiff
-        .unwrap_or(-eps_scale.log2() + 3. * beta as f64);
+        .unwrap_or((b as f64 + beta as f64 / 2.) * (1. - eps));
+    let max_diff = param.maxdiff.unwrap_or(-eps.log2() + 3. * beta as f64);
 
     Parameters {
         avg_group_load,
