@@ -81,6 +81,8 @@ struct AlgoParams {
     eps: Option<f64>,
     #[arg(long)]
     maxdiff: Option<f64>,
+    #[arg(long)]
+    maxdiff_boundry: Option<f64>,
 }
 
 /// Where the (key, value) data comes from: read directly from a file, or
@@ -309,13 +311,14 @@ fn build_params(param: &AlgoParams) -> Parameters {
         .avg_group_load
         .unwrap_or_else(|| (b as f64 + beta as f64 / 2.) * (1. - eps));
     let max_diff = param.maxdiff.unwrap_or(-eps.log2() + 3. * beta as f64);
+    let max_diff_boundry = param.maxdiff_boundry.unwrap_or(max_diff - beta as f64);
 
     Parameters {
         avg_group_load,
         inital_group_width: b,
         insertion_increment: beta,
         max_difficulty_of_task: max_diff,
-        max_difficulty_at_group_border: max_diff - beta as f64,
+        max_difficulty_at_group_border: max_diff_boundry,
     }
 }
 
